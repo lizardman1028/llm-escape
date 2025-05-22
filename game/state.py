@@ -2,6 +2,7 @@ from game.objects.door import Door
 from game.objects.computer import Computer
 from game.objects.file_cabinet import FileCabinet
 from game.objects.player import PlayerProfile
+from config import SCREEN_WIDTH, SCREEN_HEIGHT
 
 class GameState:
     def __init__(self, split_start=False):
@@ -9,28 +10,48 @@ class GameState:
             "main": Room("Main Room"),
             "hidden": Room("Hidden Room")
         }
-        if split_start:
-            self.players = {
-                "human": Player("human", room="hidden", x=100, y=300),
-                "llm": Player("llm", room="main", x=300, y=300)
-            }
-        else:
-            self.players = {
-                "human": Player("human", room="main", x=100, y=300),
-                "llm": Player("llm", room="main", x=300, y=300)
-            }
+
+        # ✅ Both players start in MAIN room by default
+        self.players = {
+            "human": Player("human", room="main", x=100, y=300),
+            "llm": Player("llm", room="main", x=300, y=300)
+        }
+
         self.shared_info = []
         self.profiles = {name: PlayerProfile(name) for name in self.players}
         self.setup_rooms()
 
     def setup_rooms(self):
-        self.rooms["main"].add_object(Door(x=200, y=100))
-        self.rooms["main"].add_object(Computer(x=100, y=150))
-        self.rooms["main"].add_object(FileCabinet(x=300, y=150))
+        # Main room: door to hidden room (left wall)
+        self.rooms["main"].add_object(Door(x=20, y=SCREEN_HEIGHT // 2, locked=True, id="to_hidden"))
 
-        self.rooms["hidden"].add_object(Door(x=600, y=100, locked=True))
-        self.rooms["hidden"].add_object(Computer(x=500, y=150, password="finalpass"))
-        self.rooms["hidden"].add_object(FileCabinet(x=700, y=150))
+        self.rooms["main"].add_object(Computer(x=100, y=150, password="1234", unlock_target_id="to_hidden"))
+        self.rooms["main"].add_object(
+            FileCabinet(x=300, y=150,
+                drawer_contents={
+                    1: "Empty",
+                    2: "Paper with clue: 'code = 1234'",
+                    3: "Locked drawer"
+                },
+                locked_drawers={3: True}
+            )
+        )
+
+        # Hidden room: door back to main (right wall) and exit door (left wall)
+        self.rooms["hidden"].add_object(Door(x=SCREEN_WIDTH - 20, y=SCREEN_HEIGHT // 2, locked=False, id="to_main"))
+        self.rooms["hidden"].add_object(Door(x=SCREEN_WIDTH // 2 + 20, y=SCREEN_HEIGHT // 2, locked=True, id="exit"))
+
+        self.rooms["hidden"].add_object(Computer(x=500, y=150, password="exit", unlock_target_id="exit"))
+        self.rooms["hidden"].add_object(
+            FileCabinet(x=700, y=150,
+                drawer_contents={
+                    1: "Paper says: 'Final password = exit'",
+                    2: "Empty",
+                    3: "Locked drawer with escape plan"
+                },
+                locked_drawers={3: True}
+            )
+        )
 
     def get_room_objects(self, room_name):
         return self.rooms[room_name].objects

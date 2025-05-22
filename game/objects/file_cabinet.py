@@ -1,19 +1,15 @@
 from game.objects.base import GameObject
 
 class FileCabinet(GameObject):
-    def __init__(self, x, y):
+    def __init__(self, x, y, drawer_contents=None, locked_drawers=None):
         super().__init__("cabinet", x, y)
-        self.drawers = {
-            1: "Empty",
-            2: "Paper with clue: 'code = 1234'",
-            3: "Locked drawer"
-        }
-        self.locked_drawers = {3: True}
+        self.drawers = drawer_contents if drawer_contents else {}
+        self.locked_drawers = locked_drawers if locked_drawers else {}
 
     def open_drawer(self, n):
         if n not in self.drawers:
-            return "Drawer not found."
-        if self.locked_drawers.get(n):
+            return f"Drawer {n} not found."
+        if self.locked_drawers.get(n, False):
             return f"Drawer {n} is locked."
         return self.drawers[n]
 

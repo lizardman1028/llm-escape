@@ -1,4 +1,5 @@
 from game.state import GameState
+from config import SCREEN_WIDTH
 
 class GameServer:
     def __init__(self, split_start=False):
@@ -41,20 +42,43 @@ class GameServer:
                 text = api_call.split("(")[1][1:-2]
                 for obj in room_objects:
                     if obj.kind == "computer":
-                        result = obj.submit(text)
+                        result = obj.submit(text, room_objects)
                         break
 
             elif api_call == "door.examine()":
                 for obj in room_objects:
                     if obj.kind == "door":
-                        result = obj.examine()
+                        result = "The door is locked." if obj.locked else "The door is unlocked."
                         break
+                else:
+                    result = "No door found."
 
             elif api_call == "door.unlock()":
                 for obj in room_objects:
                     if obj.kind == "door":
-                        result = obj.unlock()
+                        if obj.locked:
+                            obj.locked = False
+                            result = "You unlocked the door."
+                        else:
+                            result = "The door is already unlocked."
                         break
+                else:
+                    result = "No door found."
+
+            elif api_call.startswith("lock.unlock("):
+                guess = api_call.split("(")[1].rstrip(")")
+                # Hardcoded check for now
+                if guess == "5871":
+                    # Find the exit door in hidden room (left wall)
+                    for obj in self.state.get_room_objects("hidden"):
+                        if obj.kind == "door" and obj.x < SCREEN_WIDTH // 2:
+                            obj.locked = False
+                            result = "You hear a click. The exit door is now unlocked."
+                            break
+                    else:
+                        result = "Could not find the exit door."
+                else:
+                    result = "Incorrect code."
 
             elif api_call.startswith("puzzle.attempt("):
                 guess = api_call.split("(")[1][1:-2]
@@ -64,6 +88,9 @@ class GameServer:
                         if obj.is_solved():
                             profile.add_clue(f"{obj.id} solved")
                         break
+
+            else:
+                result = f"No valid API matched for `{api_call}`."
 
         except Exception as e:
             result = f"Error processing call: {e}"
