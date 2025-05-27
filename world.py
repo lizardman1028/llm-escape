@@ -29,7 +29,7 @@ class Agent:
     self.name = name
     self.revealed_items = revealed_items
 
-  def turn(self, stdscr : curses.window):
+  def turn(self):
     raise NotImplementedError("Interface does not implement turn function")
 
 class CLI_Agent(Agent):
@@ -38,47 +38,37 @@ class CLI_Agent(Agent):
     self.revealed_items = revealed_items
     self.agent_type = Agent_Type.CLI
   
-  def turn(self, stdscr : curses.window):
-    stdscr.clear()
-    stdscr.refresh()
-    self.render_world(stdscr)
-    curses.nocbreak()
-    curses.echo()
-    stdscr.addstr(f"{self.name}>")
-    user_action_bytes = stdscr.getstr()
-    user_action = user_action_bytes.decode('utf-8')
-    stdscr.refresh()
-    curses.cbreak()
-    curses.noecho()
+  def turn(self):
+    self.render_world()
+    print(f"{self.name}>", end="")
+    # user_action_bytes = std scr.getstr()
+    # user_action = user_action_bytes.decode('utf-8')
+    user_action = input()
     dot_ind = user_action.find('.')
     open_ind = user_action.find('(')
     close_ind = user_action.find('(')
     if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-      stdscr.addstr("Function not found\n")
-      return self.turn(stdscr)
+      print("Function not found\n", end="")
+      return self.turn()
     pre_dot = user_action[:dot_ind]
     post_dot = user_action[dot_ind:]
     cur_item = items.get(pre_dot, None)
     if cur_item == None or pre_dot not in self.revealed_items:
-      stdscr.addstr("Item not found\n")
-      stdscr.refresh()
-      return self.turn(stdscr)
+      print("Item not found\n", end="")
+      return self.turn()
     if post_dot == ".examine()":
       cur_item.examine(self)
-      stdscr.refresh()
     if post_dot.find(".unlock(") == 0:
       cur_combo = post_dot[8:-1]
       cur_item.unlock(cur_combo)
-      stdscr.refresh()
 
-  def render_world(self, stdscr : curses.window):
+  def render_world(self):
     for rev_item_name in self.revealed_items:
       rev_item = items.get(rev_item_name, None)
       if rev_item == None:
         continue
       # print(rev_item.print_item())
-      stdscr.addstr(rev_item.print_item())
-      stdscr.refresh()
+      print(rev_item.print_item(), end="")
 
 class LLM_Agent(Agent):
   messages = []
@@ -91,11 +81,13 @@ class LLM_Agent(Agent):
     self.revealed_items = revealed_items
     self.model = model
     self.agent_type = Agent_Type.LLM
+    self.last_action_res = ""
 
   def create_prompt(self):
     prompt = ""
     if self.initial_prompt:
       prompt += INITIAL_PROMPT.format(self.name)
+      #TODO: Uncomment self.initial_prompt = False
       self.initial_prompt = False
     else:
       prompt += self.last_action_res
@@ -106,12 +98,13 @@ class LLM_Agent(Agent):
       prompt += rev_item.print_item()
     return prompt
   
-  def render_prompt(self, stdscr : curses.window, prompt):
-    stdscr.addstr(prompt)
-    stdscr.refresh()
+  def render_prompt(self, prompt):
+    print(prompt, end="")
   
-  def turn(self, stdscr):
+  def turn(self):
     prompt = self.create_prompt()
+    #TODO: remove following line:
+    # self.messages = []
     self.messages.append({
       'role': 'user',
       'content': prompt,
@@ -122,23 +115,20 @@ class LLM_Agent(Agent):
       stream=True
     )
 
-    stdscr.refresh()
-
     response = ""
     
-    self.render_prompt(stdscr, prompt)
+    self.render_prompt(prompt)
     done_thinking = False
-    stdscr.addstr("Thinking")
+    print("Thinking", end="", flush=True)
     for chunk in stream:
       part = chunk['message']['content']
       response = response + part
       if response.find("</think>") != -1:
         done_thinking = True
       if done_thinking:
-        stdscr.addstr(part)
+        print(part, end="")
       else:
-        stdscr.addstr(".")
-      stdscr.refresh()
+        print(".", end="", flush=True)
     
     self.messages.append({
       'role': 'assistant',
@@ -149,57 +139,55 @@ class LLM_Agent(Agent):
     python_start += 10
     python_end = response[python_start:].find("```")
     python_instr = response[python_start:][:python_end]
-    stdscr.addstr("\n")
-    stdscr.addstr(self.name + ">")
-    stdscr.addstr(python_instr)
-    stdscr.refresh()
+    print("\n", end="")
+    print(self.name + ">", end="")
+    print(python_instr, end="")
 
     cmd = python_instr
     
-    dot_ind = cmd.find('.')
-    open_ind = cmd.find('(')
-    close_ind = cmd.find('(')
-    if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-      stdscr.addstr("Function not found\n")
-      return self.turn(stdscr)
-    pre_dot = cmd[:dot_ind]
-    post_dot = cmd[dot_ind:]
-    cur_item = items.get(pre_dot, None)
-    if cur_item == None or pre_dot not in self.revealed_items:
-      stdscr.addstr("Item not found\n")
-      return self.turn(stdscr)
-    if post_dot.find(".examine(") == 0:
-      stdscr.addstr(cur_item.name)
-      self.last_action_res = cur_item.examine(self)
-      return self.last_action_res
-      stdscr.refresh()
-    if post_dot.find(".unlock(") == 0:
-      cur_combo = post_dot[8:-1]
-      cur_item.unlock(cur_combo)
+    execute_command(self, cmd)
 
-    # result = execute_command(self, python_instr, stdscr)
+    # dot_ind = cmd.find('.')
+    # open_ind = cmd.find('(')
+    # close_ind = cmd.find('(')
+    # if dot_ind == -1 or open_ind == -1 or close_ind == -1:
+    #   print("Function not found\n", end="")
+    #   return self.turn()
+    # pre_dot = cmd[:dot_ind]
+    # post_dot = cmd[dot_ind:]
+    # cur_item = items.get(pre_dot, None)
+    # if cur_item == None or pre_dot not in self.revealed_items:
+    #   print("Item not found\n", end="")
+    #   return self.turn()
+    # if post_dot.find(".examine(") == 0:
+    #   print(cur_item.name, end="")
+    #   self.last_action_res = cur_item.examine(self)
+    #   return self.last_action_res
+    # if post_dot.find(".unlock(") == 0:
+    #   cur_combo = post_dot[8:-1]
+    #   cur_item.unlock(cur_combo)
+
+    # result = execute_command(self, python_instr, std scr)
     # self.last_action_res = str(result)
-    # stdscr.refresh()
+    # std scr.refresh()
     # TODO: finish LLM Turn, then start GUI interface
 
 
-def print_world(stdscr : curses.window):
+def print_world():
   for rev_item_name in revealed_items:
     rev_item = items.get(rev_item_name, None)
     if rev_item == None:
       continue
     # print(rev_item.print_item())
-    stdscr.addstr(rev_item.print_item())
-    stdscr.refresh()
+    print(rev_item.print_item(), end="")
 
-def print_agent_world(stdscr : curses.window, agent: Agent):
+def print_agent_world(agent: Agent):
   for rev_item_name in agent.revealed_items:
     rev_item = items.get(rev_item_name, None)
     if rev_item == None:
       continue
     # print(rev_item.print_item())
-    stdscr.addstr(rev_item.print_item())
-    stdscr.refresh()
+    print(rev_item.print_item(), end="")
 
 class Item:
   name : str = ""
@@ -253,29 +241,28 @@ class Item:
 def share(agent : Agent, msg):
   shared.append(f"{agent.name}: {msg}")
 
-def execute_command(agent, cmd, stdscr : curses.window):
+def execute_command(agent, cmd):
   dot_ind = cmd.find('.')
   open_ind = cmd.find('(')
   close_ind = cmd.find('(')
   if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-    stdscr.addstr("Function not found\n")
-    return agent.turn(stdscr)
+    print("Function not found\n", end="")
+    return agent.turn()
   pre_dot = cmd[:dot_ind]
   post_dot = cmd[dot_ind:]
   cur_item = items.get(pre_dot, None)
   if cur_item == None or pre_dot not in agent.revealed_items:
-    stdscr.addstr("Item not found\n")
-    return agent.turn(stdscr)
-  if post_dot == ".examine()":
-    stdscr.addstr(cur_item.name)
+    print("Item not found\n", end="")
+    return agent.turn()
+  if post_dot.find(".examine(") == 0:
+    # print(cur_item.name, end="")
     return cur_item.examine(agent)
-    stdscr.refresh()
   if post_dot.find(".unlock(") == 0:
-    cur_combo = post_dot[8:-1]
+    cur_combo = post_dot[8:post_dot.find(')')]
     cur_item.unlock(cur_combo)
 
 items = {
-  "room":Item("room", "you see a room", examine_reveals=["door", "paper"]), 
+  "room":Item("room", "you see a room, you see a door on the wall, and a piece of paper on the ground", examine_reveals=["door", "paper"]), 
   "door":Item("door", "the door has a combination lock on it", examine_reveals=["lock"]),
   "paper":Item("paper", "The paper has the number 5871 written on it"),
   "lock":Item("lock", "the lock has a numeric keyboard with 4 spots for digits", unlock_type=Unlock_Type.int, unlock_combination="5871")}
@@ -284,15 +271,19 @@ revealed_items = ["room"]
 cli_agent =  CLI_Agent("Cli Agent", ["room"])
 llm_agent = LLM_Agent("LLM_Agent", ["room"])
 
-def main(stdscr : curses.window):
-  while True:
-    # cli_agent.turn(stdscr)
-    llm_agent.turn(stdscr)
-    # cli_agent.turn(stdscr)
-    # print_agent_world(stdscr, llm_agent)
-    # stdscr.addstr(str(llm_agent.revealed_items))
-    stdscr.refresh()
-    stdscr.clear()
-    time.sleep(1)
+# def main(stdscr : curses.window):
+#   while True:
+#     # cli_agent.turn(stdscr)
+#     llm_agent.turn(stdscr)
+#     # cli_agent.turn(stdscr)
+#     # print_agent_world(stdscr, llm_agent)
+#     # stdscr.addstr(str(llm_agent.revealed_items))
+#     # stdscr.refresh()
+#     # stdscr.clear()
+#     time.sleep(1)
   
-wrapper(main)
+# wrapper(main)
+
+while True:
+  llm_agent.turn()
+  time.sleep(1)
