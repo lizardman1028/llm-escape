@@ -1,27 +1,19 @@
 import pygame
-import sys
+from world import Agent, Item, World
 from game.engine import GameEngine
 from config import SCREEN_WIDTH, SCREEN_HEIGHT
+from pygame_agent import PygameAgent
+from pygame_object import PygameObject
 
 def main():
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("Escape Room: Human vs LLM")
+    
+    pygame_object = PygameObject([255,255,255], 10, 10)
+    items = {"rectangle":Item("rectangle", "", pygame_object=pygame_object)}
+    world = World(items=items)
+    agent = PygameAgent("Player", ["rectangle"], world)
 
-    clock = pygame.time.Clock()
-    engine = GameEngine(screen)
-
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            engine.handle_event(event)
-
-        engine.update()
-        engine.draw()
-        pygame.display.flip()
-        clock.tick(60)
+    agent.turn()
+    
 
 if __name__ == "__main__":
     main()

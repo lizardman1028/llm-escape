@@ -1,18 +1,9 @@
-from enum import Enum
 import curses
 from curses import wrapper
 import time
 import ollama
-
-class Unlock_Type(Enum):
-  none = 0
-  int = 1
-  str = 2
-
-class Agent_Type(Enum):
-  CLI = 0
-  LLM = 1
-  TERMINAL_UI = 2
+from pygame_object import PygameObject
+from our_enums import Unlock_Type, Agent_Type, Item_Type
 
 INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape room is specified through a series of Python Objects, and you can interact with the world in this way. To win you need to open the door.\
 Here are the objects in the room and their associated functions, the room will update as you interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
@@ -33,42 +24,25 @@ class Agent:
     raise NotImplementedError("Interface does not implement turn function")
 
 class CLI_Agent(Agent):
-  def __init__(self, name, revealed_items):
+  def __init__(self, name, revealed_items, world):
     self.name = name
     self.revealed_items = revealed_items
+    self.world = world
     self.agent_type = Agent_Type.CLI
   
   def turn(self):
     self.render_world()
     print(f"{self.name}>", end="")
-    # user_action_bytes = std scr.getstr()
-    # user_action = user_action_bytes.decode('utf-8')
+    
     user_action = input()
     execute_command(self, user_action)
-    # dot_ind = user_action.find('.')
-    # open_ind = user_action.find('(')
-    # close_ind = user_action.find('(')
-    # if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-    #   print("Function not found\n", end="")
-    #   return self.turn()
-    # pre_dot = user_action[:dot_ind]
-    # post_dot = user_action[dot_ind:]
-    # cur_item = items.get(pre_dot, None)
-    # if cur_item == None or pre_dot not in self.revealed_items:
-    #   print("Item not found\n", end="")
-    #   return self.turn()
-    # if post_dot == ".examine()":
-    #   cur_item.examine(self)
-    # if post_dot.find(".unlock(") == 0:
-    #   cur_combo = post_dot[8:-1]
-    #   cur_item.unlock(cur_combo)
+   
 
   def render_world(self):
     for rev_item_name in self.revealed_items:
-      rev_item = items.get(rev_item_name, None)
+      rev_item = self.world.items.get(rev_item_name, None)
       if rev_item == None:
         continue
-      # print(rev_item.print_item())
       print(rev_item.print_item(), end="")
 
 class LLM_Agent(Agent):
@@ -77,8 +51,9 @@ class LLM_Agent(Agent):
   initial_prompt : bool = True
   last_action_res : str
   
-  def __init__(self, name, revealed_items, model='deepseek-r1:32b'):
+  def __init__(self, name, revealed_items, model='deepseek-r1:32b', world=None):
     self.name = name
+    self.world = world
     self.revealed_items = revealed_items
     self.model = model
     self.agent_type = Agent_Type.LLM
@@ -93,7 +68,7 @@ class LLM_Agent(Agent):
     else:
       prompt += self.last_action_res
     for rev_item_name in self.revealed_items:
-      rev_item = items.get(rev_item_name, None)
+      rev_item = self.world.items.get(rev_item_name, None)
       if rev_item == None:
         continue
       prompt += rev_item.print_item()
@@ -148,43 +123,18 @@ class LLM_Agent(Agent):
     
     execute_command(self, cmd)
 
-    # dot_ind = cmd.find('.')
-    # open_ind = cmd.find('(')
-    # close_ind = cmd.find('(')
-    # if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-    #   print("Function not found\n", end="")
-    #   return self.turn()
-    # pre_dot = cmd[:dot_ind]
-    # post_dot = cmd[dot_ind:]
-    # cur_item = items.get(pre_dot, None)
-    # if cur_item == None or pre_dot not in self.revealed_items:
-    #   print("Item not found\n", end="")
-    #   return self.turn()
-    # if post_dot.find(".examine(") == 0:
-    #   print(cur_item.name, end="")
-    #   self.last_action_res = cur_item.examine(self)
-    #   return self.last_action_res
-    # if post_dot.find(".unlock(") == 0:
-    #   cur_combo = post_dot[8:-1]
-    #   cur_item.unlock(cur_combo)
 
-    # result = execute_command(self, python_instr, std scr)
-    # self.last_action_res = str(result)
-    # std scr.refresh()
-    # TODO: finish LLM Turn, then start GUI interface
-
-
-def print_world():
-  for rev_item_name in revealed_items:
-    rev_item = items.get(rev_item_name, None)
-    if rev_item == None:
-      continue
-    # print(rev_item.print_item())
-    print(rev_item.print_item(), end="")
+# def print_world():
+#   for rev_item_name in revealed_items:
+#     rev_item = self.world.items.get(rev_item_name, None)
+#     if rev_item == None:
+#       continue
+#     # print(rev_item.print_item())
+#     print(rev_item.print_item(), end="")
 
 def print_agent_world(agent: Agent):
   for rev_item_name in agent.revealed_items:
-    rev_item = items.get(rev_item_name, None)
+    rev_item = agent.world.items.get(rev_item_name, None)
     if rev_item == None:
       continue
     # print(rev_item.print_item())
@@ -199,12 +149,21 @@ class Item:
   unlock_combination : str = ""
   unlock_attempts : list = []
   unlocked : bool = False
-  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = []):
+  pygame_object = None
+  item_type: Item_Type = Item_Type.ITEM
+  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = None, item_type: Item_Type = Item_Type.ITEM):
     self.name = name
     self.examine_out = examine_out
     self.unlock_type = unlock_type
     self.unlock_combination = unlock_combination
     self.examine_reveals = examine_reveals
+    
+    self.item_type = Item_Type.ITEM
+    self.pygame_object = pygame_object
+    self.pygame_object.item_type = Item_Type.ITEM
+    self.examined = False
+    self.unlock_attempts = []
+    self.unlocked = False
 
   def print_item(self):
     ret = ""
@@ -251,7 +210,7 @@ def execute_command(agent, cmd):
     return agent.turn()
   pre_dot = cmd[:dot_ind]
   post_dot = cmd[dot_ind:]
-  cur_item = items.get(pre_dot, None)
+  cur_item = agent.world.items.get(pre_dot, None)
   if cur_item == None or pre_dot not in agent.revealed_items:
     print("Item not found\n", end="")
     return agent.turn()
@@ -262,29 +221,26 @@ def execute_command(agent, cmd):
     cur_combo = post_dot[8:post_dot.find(')')]
     cur_item.unlock(cur_combo)
 
-items = {
-  "room":Item("room", "you see a room, you see a door on the wall, and a piece of paper on the ground", examine_reveals=["door", "paper"]), 
-  "paper":Item("paper", "The paper has the number 5871 written on it"),
-  "lock":Item("door", "the door has a combination lock on it, the lock has a numeric keyboard with 4 spots for digits", unlock_type=Unlock_Type.int, unlock_combination="5871")}
-revealed_items = ["room"]
 
-cli_agent =  CLI_Agent("Cli Agent", ["room"])
-llm_agent = LLM_Agent("LLM_Agent", ["room"])
 
-# def main(stdscr : curses.window):
-#   while True:
-#     # cli_agent.turn(stdscr)
-#     llm_agent.turn(stdscr)
-#     # cli_agent.turn(stdscr)
-#     # print_agent_world(stdscr, llm_agent)
-#     # stdscr.addstr(str(llm_agent.revealed_items))
-#     # stdscr.refresh()
-#     # stdscr.clear()
-#     time.sleep(1)
-  
-# wrapper(main)
 
-while True:
-  # cli_agent.turn()
-  llm_agent.turn()
-  time.sleep(1)
+
+# items = {
+#   "room":Item("room", "you see a room, you see a door on the wall, and a piece of paper on the ground", examine_reveals=["door", "paper"]), 
+#   "paper":Item("paper", "The paper has the number 5871 written on it"),
+#   "lock":Item("door", "the door has a combination lock on it, the lock has a numeric keyboard with 4 spots for digits", unlock_type=Unlock_Type.int, unlock_combination="5871")}
+# revealed_items = ["room"]
+
+# cli_agent =  CLI_Agent("Cli Agent", ["room"])
+# llm_agent = LLM_Agent("LLM_Agent", ["room"])
+
+
+class World:
+  items : list[Item]
+  def __init__(self, items):
+    self.items = items
+
+# while True:
+#   # cli_agent.turn()
+#   llm_agent.turn()
+#   time.sleep(1)

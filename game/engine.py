@@ -4,6 +4,8 @@ from game.server import GameServer
 from game.llm_game import LLMGame
 from config import *
 from game.rules import get_escape_room_rules
+import world
+from world import Agent
 
 def circle_rect_collision(cx, cy, radius, rect):
     closest_x = max(rect.left, min(cx, rect.right))
@@ -34,7 +36,7 @@ class GameEngine:
         self.rules_text = get_escape_room_rules().splitlines()
         self.game_started = False
 
-    def handle_event(self, event):
+    def handle_event(self, event, agent : Agent):
         if not self.game_started and event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
             button_x, button_y = SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT // 2 - 20
@@ -93,6 +95,7 @@ class GameEngine:
         new_y = player.y + dy
 
         # Define room boundaries
+        
         padding = 8
         if player.room == "main":
             min_x = padding
@@ -108,7 +111,7 @@ class GameEngine:
         player.y = max(min_y, min(max_y, new_y))
 
         # Detect object collisions
-        for obj in self.server.state.get_room_objects(player.room):
+        for obj in self.server.state.get_room_objects(player.room):  # World.getItems
             obj_rect = None
             message = None
 
