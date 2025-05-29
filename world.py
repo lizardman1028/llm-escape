@@ -44,23 +44,24 @@ class CLI_Agent(Agent):
     # user_action_bytes = std scr.getstr()
     # user_action = user_action_bytes.decode('utf-8')
     user_action = input()
-    dot_ind = user_action.find('.')
-    open_ind = user_action.find('(')
-    close_ind = user_action.find('(')
-    if dot_ind == -1 or open_ind == -1 or close_ind == -1:
-      print("Function not found\n", end="")
-      return self.turn()
-    pre_dot = user_action[:dot_ind]
-    post_dot = user_action[dot_ind:]
-    cur_item = items.get(pre_dot, None)
-    if cur_item == None or pre_dot not in self.revealed_items:
-      print("Item not found\n", end="")
-      return self.turn()
-    if post_dot == ".examine()":
-      cur_item.examine(self)
-    if post_dot.find(".unlock(") == 0:
-      cur_combo = post_dot[8:-1]
-      cur_item.unlock(cur_combo)
+    execute_command(self, user_action)
+    # dot_ind = user_action.find('.')
+    # open_ind = user_action.find('(')
+    # close_ind = user_action.find('(')
+    # if dot_ind == -1 or open_ind == -1 or close_ind == -1:
+    #   print("Function not found\n", end="")
+    #   return self.turn()
+    # pre_dot = user_action[:dot_ind]
+    # post_dot = user_action[dot_ind:]
+    # cur_item = items.get(pre_dot, None)
+    # if cur_item == None or pre_dot not in self.revealed_items:
+    #   print("Item not found\n", end="")
+    #   return self.turn()
+    # if post_dot == ".examine()":
+    #   cur_item.examine(self)
+    # if post_dot.find(".unlock(") == 0:
+    #   cur_combo = post_dot[8:-1]
+    #   cur_item.unlock(cur_combo)
 
   def render_world(self):
     for rev_item_name in self.revealed_items:
@@ -263,9 +264,8 @@ def execute_command(agent, cmd):
 
 items = {
   "room":Item("room", "you see a room, you see a door on the wall, and a piece of paper on the ground", examine_reveals=["door", "paper"]), 
-  "door":Item("door", "the door has a combination lock on it", examine_reveals=["lock"]),
   "paper":Item("paper", "The paper has the number 5871 written on it"),
-  "lock":Item("lock", "the lock has a numeric keyboard with 4 spots for digits", unlock_type=Unlock_Type.int, unlock_combination="5871")}
+  "lock":Item("door", "the door has a combination lock on it, the lock has a numeric keyboard with 4 spots for digits", unlock_type=Unlock_Type.int, unlock_combination="5871")}
 revealed_items = ["room"]
 
 cli_agent =  CLI_Agent("Cli Agent", ["room"])
@@ -285,5 +285,6 @@ llm_agent = LLM_Agent("LLM_Agent", ["room"])
 # wrapper(main)
 
 while True:
+  # cli_agent.turn()
   llm_agent.turn()
   time.sleep(1)
