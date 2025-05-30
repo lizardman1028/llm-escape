@@ -4,6 +4,7 @@ import time
 import ollama
 from pygame_object import PygameObject
 from our_enums import Unlock_Type, Agent_Type, Item_Type
+# from world import World
 
 INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape room is specified through a series of Python Objects, and you can interact with the world in this way. To win you need to open the door.\
 Here are the objects in the room and their associated functions, the room will update as you interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
@@ -16,12 +17,76 @@ class Agent:
   name : str
   agent_type : Agent_Type
   revealed_items : list[str] = []
+  # world: World
   def __init__(self, name, revealed_items):
     self.name = name
     self.revealed_items = revealed_items
 
   def turn(self):
     raise NotImplementedError("Interface does not implement turn function")
+  
+class Item:
+  name : str = ""
+  examine_out : str = ""
+  examined : bool = False
+  examine_reveals : list[str] 
+  unlock_type : Unlock_Type = Unlock_Type.none
+  unlock_combination : str = ""
+  unlock_attempts : list = []
+  unlocked : bool = False
+  pygame_object : PygameObject = PygameObject((0,0,0),0,0,0,0)
+  item_type: Item_Type = Item_Type.ITEM
+  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = PygameObject((0,0,0), 0,0,0,0), item_type: Item_Type = Item_Type.ITEM):
+    self.name = name
+    self.examine_out = examine_out
+    self.unlock_type = unlock_type
+    self.unlock_combination = unlock_combination
+    self.examine_reveals = examine_reveals
+    
+    self.item_type = item_type
+    self.pygame_object = pygame_object
+    self.pygame_object.item_type = item_type
+    self.examined = False
+    self.unlock_attempts = []
+    self.unlocked = False
+
+  def print_item(self):
+    ret = ""
+    ret += f"{self.name}:\n"
+    ret += f"  def examine()"
+    if (self.examined):
+      ret += f" = '{self.examine_out}'"
+    ret += "\n"
+    if (self.examined):
+      if (self.unlock_type == Unlock_Type.none):
+        ret += ""
+      if (self.unlock_type == Unlock_Type.int or self.unlock_type == Unlock_Type.str):
+        if self.unlocked:
+          ret += f"  def unlock({self.unlock_combination}) = True\n"
+        else:
+          ret += f"  def unlock({self.unlock_type.name})\n"
+        if (len(self.unlock_attempts) > 0 and not self.unlocked):
+          for attempt in self.unlock_attempts:
+            ret += f"  unlock({attempt}) = False\n"
+    return ret
+  def examine(self, agent : Agent):
+    self.examined = True
+    for item_name in self.examine_reveals:
+      agent.revealed_items.append(item_name)
+    if agent.agent_type == Agent_Type.LLM:
+      return f"{self.name}.examine() = {self.examine_out}"
+    return self.examine_out
+  def unlock(self, combination):
+    if combination == self.unlock_combination:
+      self.unlocked = True
+    else:
+      self.unlock_attempts.append(combination)
+    return combination == self.unlock_combination
+
+class World:
+  items : dict[str, Item]
+  def __init__(self, items):
+    self.items = items
 
 class CLI_Agent(Agent):
   def __init__(self, name, revealed_items, world):
@@ -51,7 +116,7 @@ class LLM_Agent(Agent):
   initial_prompt : bool = True
   last_action_res : str
   
-  def __init__(self, name, revealed_items, model='deepseek-r1:32b', world=None):
+  def __init__(self, name, revealed_items, model='deepseek-r1:32b', world: World=World({})):
     self.name = name
     self.world = world
     self.revealed_items = revealed_items
@@ -132,71 +197,71 @@ class LLM_Agent(Agent):
 #     # print(rev_item.print_item())
 #     print(rev_item.print_item(), end="")
 
-def print_agent_world(agent: Agent):
-  for rev_item_name in agent.revealed_items:
-    rev_item = agent.world.items.get(rev_item_name, None)
-    if rev_item == None:
-      continue
-    # print(rev_item.print_item())
-    print(rev_item.print_item(), end="")
+# def print_agent_world(agent: Agent):
+#   for rev_item_name in agent.revealed_items:
+#     rev_item = agent.world.items.get(rev_item_name, None)
+#     if rev_item == None:
+#       continue
+#     # print(rev_item.print_item())
+#     print(rev_item.print_item(), end="")
 
-class Item:
-  name : str = ""
-  examine_out : str = ""
-  examined : bool = False
-  examine_reveals : list[str] 
-  unlock_type : Unlock_Type = Unlock_Type.none
-  unlock_combination : str = ""
-  unlock_attempts : list = []
-  unlocked : bool = False
-  pygame_object = None
-  item_type: Item_Type = Item_Type.ITEM
-  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = None, item_type: Item_Type = Item_Type.ITEM):
-    self.name = name
-    self.examine_out = examine_out
-    self.unlock_type = unlock_type
-    self.unlock_combination = unlock_combination
-    self.examine_reveals = examine_reveals
+# class Item:
+#   name : str = ""
+#   examine_out : str = ""
+#   examined : bool = False
+#   examine_reveals : list[str] 
+#   unlock_type : Unlock_Type = Unlock_Type.none
+#   unlock_combination : str = ""
+#   unlock_attempts : list = []
+#   unlocked : bool = False
+#   pygame_object : PygameObject = PygameObject((0,0,0),0,0,0,0)
+#   item_type: Item_Type = Item_Type.ITEM
+#   def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = PygameObject((0,0,0), 0,0,0,0), item_type: Item_Type = Item_Type.ITEM):
+#     self.name = name
+#     self.examine_out = examine_out
+#     self.unlock_type = unlock_type
+#     self.unlock_combination = unlock_combination
+#     self.examine_reveals = examine_reveals
     
-    self.item_type = Item_Type.ITEM
-    self.pygame_object = pygame_object
-    self.pygame_object.item_type = Item_Type.ITEM
-    self.examined = False
-    self.unlock_attempts = []
-    self.unlocked = False
+#     self.item_type = Item_Type.ITEM
+#     self.pygame_object = pygame_object
+#     self.pygame_object.item_type = Item_Type.ITEM
+#     self.examined = False
+#     self.unlock_attempts = []
+#     self.unlocked = False
 
-  def print_item(self):
-    ret = ""
-    ret += f"{self.name}:\n"
-    ret += f"  def examine()"
-    if (self.examined):
-      ret += f" = '{self.examine_out}'"
-    ret += "\n"
-    if (self.examined):
-      if (self.unlock_type == Unlock_Type.none):
-        ret += ""
-      if (self.unlock_type == Unlock_Type.int or self.unlock_type == Unlock_Type.str):
-        if self.unlocked:
-          ret += f"  def unlock({self.unlock_combination}) = True\n"
-        else:
-          ret += f"  def unlock({self.unlock_type.name})\n"
-        if (len(self.unlock_attempts) > 0 and not self.unlocked):
-          for attempt in self.unlock_attempts:
-            ret += f"  unlock({attempt}) = False\n"
-    return ret
-  def examine(self, agent : Agent):
-    self.examined = True
-    for item_name in self.examine_reveals:
-      agent.revealed_items.append(item_name)
-    if agent.agent_type == Agent_Type.LLM:
-      return f"{self.name}.examine() = {self.examine_out}"
-    return self.examine_out
-  def unlock(self, combination):
-    if combination == self.unlock_combination:
-      self.unlocked = True
-    else:
-      self.unlock_attempts.append(combination)
-    return combination == self.unlock_combination
+#   def print_item(self):
+#     ret = ""
+#     ret += f"{self.name}:\n"
+#     ret += f"  def examine()"
+#     if (self.examined):
+#       ret += f" = '{self.examine_out}'"
+#     ret += "\n"
+#     if (self.examined):
+#       if (self.unlock_type == Unlock_Type.none):
+#         ret += ""
+#       if (self.unlock_type == Unlock_Type.int or self.unlock_type == Unlock_Type.str):
+#         if self.unlocked:
+#           ret += f"  def unlock({self.unlock_combination}) = True\n"
+#         else:
+#           ret += f"  def unlock({self.unlock_type.name})\n"
+#         if (len(self.unlock_attempts) > 0 and not self.unlocked):
+#           for attempt in self.unlock_attempts:
+#             ret += f"  unlock({attempt}) = False\n"
+#     return ret
+#   def examine(self, agent : Agent):
+#     self.examined = True
+#     for item_name in self.examine_reveals:
+#       agent.revealed_items.append(item_name)
+#     if agent.agent_type == Agent_Type.LLM:
+#       return f"{self.name}.examine() = {self.examine_out}"
+#     return self.examine_out
+#   def unlock(self, combination):
+#     if combination == self.unlock_combination:
+#       self.unlocked = True
+#     else:
+#       self.unlock_attempts.append(combination)
+#     return combination == self.unlock_combination
 
 def share(agent : Agent, msg):
   shared.append(f"{agent.name}: {msg}")
@@ -222,9 +287,6 @@ def execute_command(agent, cmd):
     cur_item.unlock(cur_combo)
 
 
-
-
-
 # items = {
 #   "room":Item("room", "you see a room, you see a door on the wall, and a piece of paper on the ground", examine_reveals=["door", "paper"]), 
 #   "paper":Item("paper", "The paper has the number 5871 written on it"),
@@ -234,11 +296,6 @@ def execute_command(agent, cmd):
 # cli_agent =  CLI_Agent("Cli Agent", ["room"])
 # llm_agent = LLM_Agent("LLM_Agent", ["room"])
 
-
-class World:
-  items : list[Item]
-  def __init__(self, items):
-    self.items = items
 
 # while True:
 #   # cli_agent.turn()

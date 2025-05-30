@@ -4,8 +4,9 @@ from game.server import GameServer
 from game.llm_game import LLMGame
 from config import *
 from game.rules import get_escape_room_rules
-import world
-from world import Agent
+from world import Agent, Item
+# from pygame_agent import PygameAgent
+from our_enums import *
 
 def circle_rect_collision(cx, cy, radius, rect):
     closest_x = max(rect.left, min(cx, rect.right))
@@ -79,7 +80,7 @@ class GameEngine:
         elif event.type == pygame.KEYUP:
             self.key_pressed.discard(event.key)
 
-    def update(self):
+    def update(self, agent: Agent):
         self.human_action_displayed = False
         if not self.game_started or self.win_message or self.selected_player == "god":
             return
@@ -90,70 +91,59 @@ class GameEngine:
         if pygame.K_a in self.key_pressed: dx -= 5
         if pygame.K_d in self.key_pressed: dx += 5
 
-        player = self.server.state.players[self.selected_player]
-        new_x = player.x + dx
-        new_y = player.y + dy
+        print(f"dx:{dx}, dy:{dy}")
+        new_x = agent.x + dx
+        new_y = agent.y + dy
 
-        # Define room boundaries
-        
-        padding = 8
-        if player.room == "main":
-            min_x = padding
-            max_x = SCREEN_WIDTH // 2 - padding
+        # Check if agent in a room, if so, clamp position to within that room (agents should hopefully always be in rooms)
+        # TODO: make it so agents can walk between rooms somehow
+        room_item = agent.get_room()
+        print(f"room name: {room_item.name}")
+        if room_item.name == "":
+            pass
         else:
-            min_x = SCREEN_WIDTH // 2 + padding
-            max_x = SCREEN_WIDTH - padding
-        min_y = padding
-        max_y = SCREEN_HEIGHT - padding
+            new_x, new_y = room_item.pygame_object.nearest_interior_pt(new_x, new_y)
+        
+        # print(f"cur_x:{agent.x} cur_y:{agent.y}")
+        # print(f"new_x:{new_x} new_y:{new_y}")
+        
+        agent.x, agent.y = new_x, new_y
+        # print(f"cur_x:{agent.x} cur_y:{agent.y}")
 
-        # Clamp inside room
-        player.x = max(min_x, min(max_x, new_x))
-        player.y = max(min_y, min(max_y, new_y))
+        collision_names, collision_items = self.player_item_collisions(agent)
 
-        # Detect object collisions
-        for obj in self.server.state.get_room_objects(player.room):  # World.getItems
-            obj_rect = None
-            message = None
+        print(f"interactable objects {collision_names}")
+    
+    def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
+        collision_names = []
+        collision_items = []
+        for revealed_name in agent.revealed_items:
+            revealed_item = agent.world.items.get(revealed_name, None)
+            if revealed_item == None:
+                continue
+            if revealed_item.pygame_object.in_player_radius(agent.x, agent.y):
+                collision_names.append(revealed_name)
+                collision_items.append(revealed_item)
+        return collision_names, collision_items
 
-            if obj.kind == "door":
-                obj_rect = pygame.Rect(obj.x - 10, obj.y - 30, 20, 60)
-                message = "A locked door." if obj.locked else "An unlocked door."
-            elif obj.kind == "cabinet":
-                obj_rect = pygame.Rect(obj.x - 20, obj.y - 20, 40, 40)
-                message = "A cabinet."
-            elif obj.kind == "computer":
-                obj_rect = pygame.Rect(obj.x - 20, obj.y, 40, 40)
-                message = "A computer terminal."
-
-            if obj_rect and circle_rect_collision(player.x, player.y, PLAYER_RADIUS, obj_rect):
-                if not self.human_action_displayed:
-                    self.last_human_result = message
-
-                # Door logic
-                if obj.kind == "door":
-                    if obj.id == "to_hidden":
-                        if obj.locked:
-                            self.last_human_result = "The entry door is locked."
-                        else:
-                            player.room = "hidden"
-                            player.x = SCREEN_WIDTH - 100
-                            player.y = SCREEN_HEIGHT // 2
-                            self.last_human_result = "You passed into the hidden room."
-
-                    elif obj.id == "to_main":
-                        if obj.locked:
-                            self.last_human_result = "The door back to the main room is locked."
-                        else:
-                            player.room = "main"
-                            player.x = 100
-                            player.y = SCREEN_HEIGHT // 2
-                            self.last_human_result = "You returned to the main room."
-
-                    elif obj.id == "exit":
-                        if obj.locked:
-                            self.last_human_result = "The exit door is locked."
-                        else:
-                            self.win_message = "You escaped the room!"
+    def draw_agent_view(self, agent: Agent):
+     if not self.game_started:
+            for i, line in enumerate(self.rules_text[:10]):
+                rule = self.font.render(line, True, (120, 120, 120))
+                self.screen.blit(rule, (10, 10 + i * 18))
+            button_x, button_y = SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT // 2 - 20
+            pygame.draw.rect(self.screen, (100, 100, 100), (button_x, button_y, 100, 40))
+            start_text = self.font.render("Start", True, (255, 255, 255))
+            self.screen.blit(start_text, (button_x + 20, button_y + 10))
+     else:
+        self.screen.fill(COLOR_BG)
+        for revealed_name in agent.revealed_items:
+            revealed_item = agent.world.items.get(revealed_name, None)
+            if revealed_item == None:
+                continue
+            revealed_item.pygame_object.draw(self.screen)
+        pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.x, agent.y), PLAYER_RADIUS)
+        return
 
     def draw(self):
         self.screen.fill(COLOR_BG)
