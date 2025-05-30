@@ -109,17 +109,6 @@ class GameEngine:
             else:
                 new_x, new_y = room_item.pygame_object.nearest_interior_pt(new_x, new_y)
 
-        # cur_x, cur_y = agent.x, agent.y
-        # agent.x, agent.y = new_x, new_y
-        # new_room_item=agent.get_room()
-        # if new_room_item.name == "":
-        #     agent.x, agent.y = cur_x, cur_y
-        # else:
-        #     new_x, new_y = new_room_item.pygame_object.nearest_interior_pt(new_x, new_y)
-        
-        
-        # print(f"cur_x:{agent.x} cur_y:{agent.y}")
-        # print(f"new_x:{new_x} new_y:{new_y}")
         
         agent.x, agent.y = new_x, new_y
         # print(f"cur_x:{agent.x} cur_y:{agent.y}")
@@ -140,7 +129,7 @@ class GameEngine:
                 collision_items.append(revealed_item)
         return collision_names, collision_items
 
-
+    
 
     def draw_agent_view(self, agent: Agent):
      if not self.game_started:
