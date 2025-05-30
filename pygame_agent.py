@@ -24,8 +24,9 @@ class PygameAgent(Agent):
     
     def __init__(self, name, revealed_items, world : World):
         self.name = name
-        self.revealed_items : list[str] = revealed_items
+        self.revealed_items = revealed_items
         self.world = world 
+        self.agent_type = Agent_Type.CLI
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("Escape Room: Human and LLM")

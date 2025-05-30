@@ -4,7 +4,7 @@ from game.server import GameServer
 from game.llm_game import LLMGame
 from config import *
 from game.rules import get_escape_room_rules
-from world import Agent, Item
+from world import Agent, Item, execute_command
 # from pygame_agent import PygameAgent
 from our_enums import *
 
@@ -37,6 +37,11 @@ class GameEngine:
         self.rules_text = get_escape_room_rules().splitlines()
         self.game_started = False
 
+        self.interaction_items = []
+        self.interaction_texts = []
+        self.api_key_bindings = {}
+        self.awaiting_unlock_target = None
+
     def handle_event(self, event, agent : Agent):
         if not self.game_started and event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
@@ -49,12 +54,18 @@ class GameEngine:
         if self.human_input_mode:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    cmd = self.human_input_text
-                    result = self.server.process_api_call("human", cmd)
-                    self.last_human_result = result if result else f"You performed `{cmd}`."
+                    if self.awaiting_unlock_target:
+                        item_name = self.awaiting_unlock_target
+                        cmd = f"{item_name}.unlock({self.human_input_text})"
+                        result = execute_command(agent, cmd)
+                        self.last_human_result = result if result else f"You performed `{cmd}`."
+                        self.awaiting_unlock_target = None
+                    else:
+                        cmd = self.human_input_text
+                        result = execute_command(agent, cmd)
+                        self.last_human_result = result if result else f"You performed `{cmd}`."
                     self.human_input_text = ""
                     self.human_input_mode = False
-                    self.human_action_displayed = True
                 elif event.key == pygame.K_BACKSPACE:
                     self.human_input_text = self.human_input_text[:-1]
                 else:
@@ -76,6 +87,43 @@ class GameEngine:
             elif event.key == pygame.K_TAB:
                 self.view_index = (self.view_index + 1) % len(self.view_modes)
                 self.selected_player = self.view_modes[self.view_index]
+
+            elif not self.human_input_mode:
+                # print(f"KEYDOWN: event.key={event.key}, unicode={event.unicode}")
+                key_char = event.unicode
+                if not key_char:
+                    if pygame.K_1 <= event.key <= pygame.K_9:
+                        key_char = str(event.key - pygame.K_0)
+
+                # If we're in unlock input mode, handle input there
+                if self.human_input_mode and self.awaiting_unlock_target:
+                    prompt = f"Enter password for {self.awaiting_unlock_target}: {self.human_input_text}"
+                    input_text = self.font.render(prompt, True, (255, 255, 255))
+                    self.screen.blit(input_text, (10, SCREEN_HEIGHT - 100))
+                    if event.key == pygame.K_RETURN:
+                        item_name = self.awaiting_unlock_target
+                        cmd = f"{item_name}.unlock({self.human_input_text})"
+                        result = execute_command(agent, cmd)
+                        self.last_human_result = result if result else f"You performed `{cmd}`."
+                        self.human_input_text = ""
+                        self.human_input_mode = False
+                        self.awaiting_unlock_target = None
+                        return
+                    elif event.key == pygame.K_BACKSPACE:
+                        self.human_input_text = self.human_input_text[:-1]
+                    else:
+                        self.human_input_text += event.unicode
+                    return
+                if key_char in self.unlock_bindings:
+                    self.human_input_mode = True
+                    self.awaiting_unlock_target = self.unlock_bindings[key_char]
+                    self.human_input_text = ""
+                    return
+
+                if key_char in self.api_key_bindings:
+                    cmd = self.api_key_bindings[key_char]
+                    result = execute_command(agent, cmd)
+                    self.last_human_result = result if result else f"You performed `{cmd}`."
 
         elif event.type == pygame.KEYUP:
             self.key_pressed.discard(event.key)
@@ -114,43 +162,76 @@ class GameEngine:
         # print(f"cur_x:{agent.x} cur_y:{agent.y}")
 
         collision_names, collision_items = self.player_item_collisions(agent)
+        # print("revealed_items =", agent.revealed_items)
+        # for item in collision_items:
+        #     if item.name not in agent.revealed_items:
+        #         agent.revealed_items.append(item.name)
+        #         print(f"Added {item.name} to revealed_items")
+
+        self.interaction_items = collision_items
+        self.api_key_bindings.clear()
+        self.unlock_bindings = {} 
+
+        if not self.human_input_mode:
+            action_index = 1
+            for item in collision_items:
+                if not item.examined:
+                    # Allow examine for nearby items even if not yet revealed
+                    self.api_key_bindings[str(action_index)] = f"{item.name}.examine()"
+                    action_index += 1
+                # if item.examined and item.unlock_type != Unlock_Type.none and not item.unlocked:
+                #     self.api_key_bindings[str(action_index)] = f"{item.name}.unlock({item.unlock_combination})"
+                #     action_index += 1
+                elif item.examined and item.unlock_type != Unlock_Type.none and not item.unlocked:
+                    self.api_key_bindings[str(action_index)] = f"{item.name}.unlock(...)"
+                    self.unlock_bindings[str(action_index)] = item.name 
+                    action_index += 1
 
         print(f"interactable objects {collision_names}")
 
+    # def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
+    #     collision_names = []
+    #     collision_items = []
+    #     for revealed_name in agent.revealed_items:
+    #         revealed_item = agent.world.items.get(revealed_name, None)
+    #         if revealed_item == None:
+    #             continue
+    #         if revealed_item.pygame_object.in_player_radius(agent.x, agent.y):
+    #             collision_names.append(revealed_name)
+    #             collision_items.append(revealed_item)
+    #     return collision_names, collision_items
+
+    # This version reveals API calls for nearby items, even when they haven't officially been revealed via examine yet
     def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
         collision_names = []
         collision_items = []
-        for revealed_name in agent.revealed_items:
-            revealed_item = agent.world.items.get(revealed_name, None)
-            if revealed_item == None:
+
+        for name in agent.revealed_items:
+            item = agent.world.items.get(name, None)
+            if item:
+                collision_names.append(name)
+                collision_items.append(item)
+
+        revealed_rooms = [
+            item for name, item in agent.world.items.items()
+            if name in agent.revealed_items and item.item_type == Item_Type.ROOM
+        ]
+
+        for name, item in agent.world.items.items():
+            if name in agent.revealed_items:
                 continue
-            if revealed_item.pygame_object.in_player_radius(agent.x, agent.y):
-                collision_names.append(revealed_name)
-                collision_items.append(revealed_item)
+            if item.item_type != Item_Type.ITEM:
+                continue
+            for room in revealed_rooms:
+                if room.pygame_object.player_inside(item.pygame_object.center_x, item.pygame_object.center_y):
+                    if item.pygame_object.in_player_radius(agent.x, agent.y):
+                        collision_names.append(name)
+                        collision_items.append(item)
+                    break
+
         return collision_names, collision_items
 
-    
-
     def draw_agent_view(self, agent: Agent):
-     if not self.game_started:
-            for i, line in enumerate(self.rules_text[:10]):
-                rule = self.font.render(line, True, (120, 120, 120))
-                self.screen.blit(rule, (10, 10 + i * 18))
-            button_x, button_y = SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT // 2 - 20
-            pygame.draw.rect(self.screen, (100, 100, 100), (button_x, button_y, 100, 40))
-            start_text = self.font.render("Start", True, (255, 255, 255))
-            self.screen.blit(start_text, (button_x + 20, button_y + 10))
-     else:
-        self.screen.fill(COLOR_BG)
-        for revealed_name in agent.revealed_items:
-            revealed_item = agent.world.items.get(revealed_name, None)
-            if revealed_item == None:
-                continue
-            revealed_item.pygame_object.draw(self.screen)
-        pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.x, agent.y), PLAYER_RADIUS)
-        return
-
-    
         self.screen.fill(COLOR_BG)
 
         if not self.game_started:
@@ -162,28 +243,30 @@ class GameEngine:
             start_text = self.font.render("Start", True, (255, 255, 255))
             self.screen.blit(start_text, (button_x + 20, button_y + 10))
         else:
-            if self.selected_player == "god":
-                drawn_rooms = set()
-                for _, player in self.server.state.players.items():
-                    if player.room not in drawn_rooms:
-                        self._draw_room_border(player.room)
-                        drawn_rooms.add(player.room)
-                for name, player in self.server.state.players.items():
-                    pygame.draw.circle(self.screen, COLOR_LLM if name == "llm" else COLOR_PLAYER,
-                                       (int(player.x), int(player.y)), PLAYER_RADIUS)
-                    for obj in self.server.state.get_room_objects(player.room):
-                        self._draw_object(obj.kind, obj.x, obj.y)
-            else:
-                state = self.server.get_state_for_player(self.selected_player)
-                self._draw_room_border(state["player"]["room"])
-                player = state["player"]
-                pygame.draw.circle(self.screen, COLOR_PLAYER, (int(player["x"]), int(player["y"])), PLAYER_RADIUS)
-                for obj in state["objects"]:
-                    self._draw_object(obj["kind"], obj["x"], obj["y"])
-                y_offset = 10
-                for msg in state["shared_info"][-5:]:
-                    text = self.font.render(msg, True, (200, 200, 200))
-                    self.screen.blit(text, (SCREEN_WIDTH - 300, y_offset))
+            revealed_rooms = [
+                item for name, item in agent.world.items.items()
+                if name in agent.revealed_items and item.item_type == Item_Type.ROOM
+            ]
+            for room in revealed_rooms:
+                room.pygame_object.draw(self.screen)
+
+            for name, item in agent.world.items.items():
+                if item.item_type == Item_Type.ITEM:
+                    for room in revealed_rooms:
+                        if room.pygame_object.player_inside(item.pygame_object.center_x, item.pygame_object.center_y):
+                            item.pygame_object.draw(self.screen)
+
+            pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.x, agent.y), PLAYER_RADIUS)
+
+            if self.interaction_items and not self.human_input_mode:
+                box_x, box_y = 20, SCREEN_HEIGHT - 150
+                pygame.draw.rect(self.screen, (50, 50, 50), (box_x, box_y, 300, 130))
+                pygame.draw.rect(self.screen, (180, 180, 180), (box_x, box_y, 300, 130), 2)
+                y_offset = 0
+                for key, action in self.api_key_bindings.items():
+                    # print(f"Binding [{key}] → {action}")
+                    text = self.font.render(f"[{key}] {action}", True, (255, 255, 255))
+                    self.screen.blit(text, (box_x + 10, box_y + 10 + y_offset))
                     y_offset += 20
 
             if self.last_llm_action:

@@ -65,23 +65,32 @@ class Item:
           ret += f"  def unlock({self.unlock_combination}) = True\n"
         else:
           ret += f"  def unlock({self.unlock_type.name})\n"
-        if (len(self.unlock_attempts) > 0 and not self.unlocked):
-          for attempt in self.unlock_attempts:
-            ret += f"  unlock({attempt}) = False\n"
+          if (len(self.unlock_attempts) > 0 and not self.unlocked):
+            for attempt in self.unlock_attempts:
+              ret += f"  unlock({attempt}) = False\n"
     return ret
-  def examine(self, agent : Agent):
+  def examine(self, agent: Agent):
     self.examined = True
     for item_name in self.examine_reveals:
-      agent.revealed_items.append(item_name)
+        if item_name not in agent.revealed_items:
+            agent.revealed_items.append(item_name)
     if agent.agent_type == Agent_Type.LLM:
-      return f"{self.name}.examine() = {self.examine_out}"
+        return f"{self.name}.examine() = {self.examine_out}"
     return self.examine_out
-  def unlock(self, combination):
-    if combination == self.unlock_combination:
-      self.unlocked = True
-    else:
-      self.unlock_attempts.append(combination)
-    return combination == self.unlock_combination
+  def unlock(self, combination, agent=None):
+    # Accept both "1234" and 1234
+    if isinstance(combination, str) and combination.startswith('"') and combination.endswith('"'):
+        combination = combination[1:-1]
+    combo_str = str(combination).strip()
+    target_str = str(self.unlock_combination).strip()
+    if combo_str == target_str:
+        self.unlocked = True
+        if self.name == "door" and agent:
+            if "room2" not in agent.revealed_items:
+                agent.revealed_items.append("room2")
+        return True
+    self.unlock_attempts.append(combo_str)
+    return False
 
 class World:
   items : dict[str, Item]
@@ -267,24 +276,37 @@ def share(agent : Agent, msg):
   shared.append(f"{agent.name}: {msg}")
 
 def execute_command(agent, cmd):
+  print(f"[exec] cmd = {cmd}")
+  print(f"[exec] agent revealed_items = {agent.revealed_items}")
   dot_ind = cmd.find('.')
   open_ind = cmd.find('(')
-  close_ind = cmd.find('(')
+  close_ind = cmd.find(')')
   if dot_ind == -1 or open_ind == -1 or close_ind == -1:
     print("Function not found\n", end="")
     return agent.turn()
   pre_dot = cmd[:dot_ind]
   post_dot = cmd[dot_ind:]
   cur_item = agent.world.items.get(pre_dot, None)
-  if cur_item == None or pre_dot not in agent.revealed_items:
-    print("Item not found\n", end="")
-    return agent.turn()
-  if post_dot.find(".examine(") == 0:
+  # if cur_item == None or pre_dot not in agent.revealed_items:
+  #   print("Item not found\n", end="")
+  #   return agent.turn()
+  if cur_item is None: # this variation allows examine for nearby unrevealed items
+    return "Item not found"
+  if post_dot.startswith(".examine("):
+      result = cur_item.examine(agent)
+      return result
+  if pre_dot not in agent.revealed_items:
+      return "Item not revealed"
+  if post_dot.startswith(".examine("):
     # print(cur_item.name, end="")
+    print(f"[exec] calling examine on {pre_dot}")
     return cur_item.examine(agent)
-  if post_dot.find(".unlock(") == 0:
+  if post_dot.startswith(".unlock("):
     cur_combo = post_dot[8:post_dot.find(')')]
-    cur_item.unlock(cur_combo)
+    print(f"[exec] trying unlock({cur_combo}) on {pre_dot}")
+    success = cur_item.unlock(cur_combo, agent=agent)
+    return "Unlocked!" if success else "Incorrect combination"
+  return "No valid API matched"
 
 
 # items = {
