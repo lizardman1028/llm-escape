@@ -91,18 +91,32 @@ class GameEngine:
         if pygame.K_a in self.key_pressed: dx -= 5
         if pygame.K_d in self.key_pressed: dx += 5
 
-        print(f"dx:{dx}, dy:{dy}")
+        # print(f"dx:{dx}, dy:{dy}")
         new_x = agent.x + dx
         new_y = agent.y + dy
 
         # Check if agent in a room, if so, clamp position to within that room (agents should hopefully always be in rooms)
-        # TODO: make it so agents can walk between rooms somehow
         room_item = agent.get_room()
         print(f"room name: {room_item.name}")
         if room_item.name == "":
             pass
         else:
-            new_x, new_y = room_item.pygame_object.nearest_interior_pt(new_x, new_y)
+            cur_x, cur_y = agent.x, agent.y
+            agent.x, agent.y = new_x, new_y
+            new_room_item=agent.get_room()
+            if new_room_item.name != "":
+                new_x, new_y = new_room_item.pygame_object.nearest_interior_pt(new_x, new_y)
+            else:
+                new_x, new_y = room_item.pygame_object.nearest_interior_pt(new_x, new_y)
+
+        # cur_x, cur_y = agent.x, agent.y
+        # agent.x, agent.y = new_x, new_y
+        # new_room_item=agent.get_room()
+        # if new_room_item.name == "":
+        #     agent.x, agent.y = cur_x, cur_y
+        # else:
+        #     new_x, new_y = new_room_item.pygame_object.nearest_interior_pt(new_x, new_y)
+        
         
         # print(f"cur_x:{agent.x} cur_y:{agent.y}")
         # print(f"new_x:{new_x} new_y:{new_y}")
@@ -113,7 +127,7 @@ class GameEngine:
         collision_names, collision_items = self.player_item_collisions(agent)
 
         print(f"interactable objects {collision_names}")
-    
+
     def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
         collision_names = []
         collision_items = []
@@ -125,6 +139,8 @@ class GameEngine:
                 collision_names.append(revealed_name)
                 collision_items.append(revealed_item)
         return collision_names, collision_items
+
+
 
     def draw_agent_view(self, agent: Agent):
      if not self.game_started:
@@ -145,7 +161,7 @@ class GameEngine:
         pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.x, agent.y), PLAYER_RADIUS)
         return
 
-    def draw(self):
+    
         self.screen.fill(COLOR_BG)
 
         if not self.game_started:

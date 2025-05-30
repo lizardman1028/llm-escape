@@ -61,15 +61,15 @@ class PygameAgent(Agent):
     def get_room(self) -> Item:
         item_obj = None
         for item_name in self.revealed_items:
-            print(f"item_name:{item_name}")
+            # print(f"item_name:{item_name}")
             item_obj = self.world.items.get(item_name)
             if item_obj == None:
                 continue
             if item_obj.item_type != Item_Type.ROOM:
-                print(f"item_obj{item_obj}")
+                # print(f"item_obj{item_obj}")
                 continue
             if item_obj.pygame_object.player_inside(self.x, self.y):
-                print("In Room!")
+                # print("In Room!")
                 return item_obj
         return Item("","")
 

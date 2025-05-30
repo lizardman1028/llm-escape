@@ -54,42 +54,14 @@ class PygameObject:
 
         return interior_x, interior_y
 
-    def in_player_radius(self, player_x, player_y, radius=30) -> bool:
-        if self.player_inside(player_x, player_y):
-            return True
-        
-        # if self.center_in_player_radius(player_x, player_y, radius):
-        #     return True
-        
+    def in_player_radius(self, player_x, player_y, radius=40) -> bool:
         top_left_x = self.x
         top_left_y = self.y
-
-        top_right_x = self.x + self.width
-        top_right_y = self.y
-
-        bottom_left_x = self.x
-        bottom_left_y = self.y + self.height
 
         bottom_right_x = self.x + self.width
         bottom_right_y = self.y + self.height
 
-        top_left_in = player_x - radius < top_left_x and top_left_x < player_x + radius and player_y - radius < top_left_y and top_left_y < player_y + radius
-        if top_left_in:
-            return True
-        
-        bottom_right_in = player_x - radius < bottom_right_x and bottom_right_x < player_x + radius and player_y - radius < bottom_right_y and bottom_right_y < player_y + radius
-        if bottom_right_in:
-            return True
-        
-        top_right_in = player_x - radius < top_right_x and top_right_x < player_x + radius and player_y - radius < top_right_y and top_right_y < player_y + radius
-        if top_right_in:
-            return True
-        
-        bottom_left_in = player_x - radius < bottom_left_x and bottom_left_x < player_x + radius and player_y - radius < bottom_left_y and bottom_left_y < player_y + radius
-        if bottom_left_in:
-            return True
-        
-        return False
+        return player_x >= top_left_x - radius and player_x <= bottom_right_x + radius and player_y >= top_left_y - radius and player_y <= bottom_right_y + radius
 
         
             
