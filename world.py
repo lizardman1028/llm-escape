@@ -33,16 +33,17 @@ class Item:
   unlock_type : Unlock_Type = Unlock_Type.none
   unlock_combination : str = ""
   unlock_attempts : list = []
+  unlock_reveals : list[str]
   unlocked : bool = False
   pygame_object : PygameObject = PygameObject((0,0,0),0,0,0,0)
   item_type: Item_Type = Item_Type.ITEM
-  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = PygameObject((0,0,0), 0,0,0,0), item_type: Item_Type = Item_Type.ITEM):
+  def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = PygameObject((0,0,0), 0,0,0,0), item_type: Item_Type = Item_Type.ITEM, unlock_reveals : list[str] = []):
     self.name = name
     self.examine_out = examine_out
     self.unlock_type = unlock_type
     self.unlock_combination = unlock_combination
     self.examine_reveals = examine_reveals
-    
+    self.unlock_reveals = unlock_reveals
     self.item_type = item_type
     self.pygame_object = pygame_object
     self.pygame_object.item_type = item_type
@@ -77,7 +78,7 @@ class Item:
     if agent.agent_type == Agent_Type.LLM:
         return f"{self.name}.examine() = {self.examine_out}"
     return self.examine_out
-  def unlock(self, combination, agent=None):
+  def unlock(self, combination, agent: Agent):
     # Accept both "1234" and 1234
     if isinstance(combination, str) and combination.startswith('"') and combination.endswith('"'):
         combination = combination[1:-1]
@@ -85,9 +86,7 @@ class Item:
     target_str = str(self.unlock_combination).strip()
     if combo_str == target_str:
         self.unlocked = True
-        if self.name == "door" and agent:
-            if "room2" not in agent.revealed_items:
-                agent.revealed_items.append("room2")
+        agent.revealed_items.extend(self.unlock_reveals)
         return True
     self.unlock_attempts.append(combo_str)
     return False
