@@ -161,13 +161,13 @@ class GameEngine:
         agent.x, agent.y = new_x, new_y
         # print(f"cur_x:{agent.x} cur_y:{agent.y}")
 
-        collision_names, collision_items = self.player_item_collisions(agent)
+        collision_names, collision_items = self.old_player_item_collisions(agent)
         # print("revealed_items =", agent.revealed_items)
         # for item in collision_items:
         #     if item.name not in agent.revealed_items:
         #         agent.revealed_items.append(item.name)
         #         print(f"Added {item.name} to revealed_items")
-
+        # self.interaction_items
         self.interaction_items = collision_items
         self.api_key_bindings.clear()
         self.unlock_bindings = {} 
@@ -175,6 +175,9 @@ class GameEngine:
         if not self.human_input_mode:
             action_index = 1
             for item in collision_items:
+                if item.examined:
+                    self.api_key_bindings[str(action_index)] = f'{item.name}.examine() = "{item.examine_out}"'
+                    action_index += 1
                 if not item.examined:
                     # Allow examine for nearby items even if not yet revealed
                     self.api_key_bindings[str(action_index)] = f"{item.name}.examine()"
@@ -182,8 +185,8 @@ class GameEngine:
                 # if item.examined and item.unlock_type != Unlock_Type.none and not item.unlocked:
                 #     self.api_key_bindings[str(action_index)] = f"{item.name}.unlock({item.unlock_combination})"
                 #     action_index += 1
-                elif item.examined and item.unlock_type != Unlock_Type.none and not item.unlocked:
-                    self.api_key_bindings[str(action_index)] = f"{item.name}.unlock(...)"
+                if item.examined and item.unlock_type != Unlock_Type.none and not item.unlocked:
+                    self.api_key_bindings[str(action_index)] = f"{item.name}.unlock({item.unlock_type.name})"
                     self.unlock_bindings[str(action_index)] = item.name 
                     action_index += 1
 
@@ -201,6 +204,18 @@ class GameEngine:
     #             collision_items.append(revealed_item)
     #     return collision_names, collision_items
 
+    def old_player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
+        collision_names = []
+        collision_items = []
+        for revealed_name in agent.revealed_items:
+            revealed_item = agent.world.items.get(revealed_name, None)
+            if revealed_item == None:
+                continue
+            if revealed_item.pygame_object.in_player_radius(agent.x, agent.y):
+                collision_names.append(revealed_name)
+                collision_items.append(revealed_item)
+        return collision_names, collision_items
+    
     # This version reveals API calls for nearby items, even when they haven't officially been revealed via examine yet
     def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
         collision_names = []
@@ -281,30 +296,3 @@ class GameEngine:
             if self.win_message:
                 win_text = self.font.render(self.win_message, True, (0, 255, 0))
                 self.screen.blit(win_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
-
-    def _draw_object(self, kind, x, y):
-        if kind == "computer":
-            pygame.draw.polygon(self.screen, COLOR_COMPUTER, [(x, y), (x + 20, y + 40), (x - 20, y + 40)])
-        elif kind == "cabinet":
-            pygame.draw.rect(self.screen, COLOR_CABINET, (x - 20, y - 20, 40, 40))
-        elif kind == "door":
-            pygame.draw.rect(self.screen, COLOR_DOOR, (x - 10, y - 30, 20, 60))
-
-    def _draw_room_border(self, room_name):
-        border_color = (100, 100, 100)
-        thickness = 8
-        if room_name == "main":
-            pygame.draw.rect(self.screen, border_color, (0, 0, SCREEN_WIDTH // 2, thickness))
-            pygame.draw.rect(self.screen, border_color, (0, SCREEN_HEIGHT - thickness, SCREEN_WIDTH // 2, thickness))
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH // 2 - thickness, 0, thickness, SCREEN_HEIGHT))
-            pygame.draw.rect(self.screen, border_color, (0, 0, thickness, SCREEN_HEIGHT // 2 - 40))
-            pygame.draw.rect(self.screen, border_color, (0, SCREEN_HEIGHT // 2 + 40, thickness, SCREEN_HEIGHT // 2 - 40))
-        elif room_name == "hidden":
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH // 2, 0, SCREEN_WIDTH // 2, thickness))
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH // 2, SCREEN_HEIGHT - thickness, SCREEN_WIDTH // 2, thickness))
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH - thickness, 0, thickness, SCREEN_HEIGHT))
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH // 2, 0, thickness, SCREEN_HEIGHT // 2 - 40))
-            pygame.draw.rect(self.screen, border_color, (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40, thickness, SCREEN_HEIGHT // 2 - 40))
-
-    def _distance(self, player, obj):
-        return ((player.x - obj.x)**2 + (player.y - obj.y)**2)**0.5

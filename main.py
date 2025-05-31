@@ -16,7 +16,7 @@ def main():
         "room":Item("room", "You are in a big room. You see a book and a door.", examine_reveals=["book", "door"], pygame_object=pygame_room, item_type=Item_Type.ROOM),
         "book":Item("book", "There's something written inside: 1234", pygame_object=pygame_book, item_type=Item_Type.ITEM),
         "room2":Item("room2", "You discovered a hidden room!", pygame_object=pygame_room2, item_type=Item_Type.ROOM),
-        "door": Item("door", "A locked door. Maybe it leads somewhere.", unlock_type=Unlock_Type.str, unlock_combination="1234", examine_reveals=[], unlock_reveals=["room2"], pygame_object=pygame_door, item_type=Item_Type.ITEM)}
+        "door": Item("door", "A locked door. Maybe it leads somewhere.", unlock_type=Unlock_Type.int, unlock_combination="1234", examine_reveals=[], unlock_reveals=["room2"], pygame_object=pygame_door, item_type=Item_Type.ITEM)}
     world = World(items=items)
     agent = PygameAgent("Player", ["room"], world)
 
