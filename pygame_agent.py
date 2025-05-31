@@ -26,20 +26,28 @@ class PygameAgent(Agent):
         self.name = name
         self.revealed_items = revealed_items
         self.world = world 
-        self.agent_type = Agent_Type.CLI
-        pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Escape Room: Human and LLM")
+        self.agent_type = Agent_Type.PYGAME_AGENT
+        # pygame.init()
+        # self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # pygame.display.set_caption("Escape Room: Human and LLM")
 
-        self.clock = pygame.time.Clock()
-        self.engine = GameEngine(self.screen)
+        # self.clock = pygame.time.Clock()
+        # self.engine = GameEngine(self.screen)
+        self.screen = world.screen
+        self.clock = world.clock
+        self.engine = world.engine
+
+
         self.shouldnt_break = True
 
-        self.x = 200
-        self.y = 200
+        self.x = int(world.items[revealed_items[0]].pygame_object.center_x)
+        self.y = int(world.items[revealed_items[0]].pygame_object.center_y)
+
+        self.agent_type = Agent_Type.PYGAME_AGENT
 
     def turn(self):
         self.engine.draw_agent_view(self)
+        self.shouldnt_break = True
         # for item_name in self.revealed_items:
         #     item_obj = self.world.items[item_name]
         #     item_obj.pygame_object.draw(self.screen)
@@ -52,7 +60,7 @@ class PygameAgent(Agent):
 
             self.engine.update(self)
             # self.engine.draw()
-            self.engine.draw_agent_view(self)
+            self.engine.old_draw_agent_view(self)
             # for item_name in self.revealed_items:
             #     item_obj = self.world.items[item_name]
             #     item_obj.pygame_object.draw(self.screen)

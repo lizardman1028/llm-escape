@@ -8,7 +8,7 @@ class Unlock_Type(Enum):
 class Agent_Type(Enum):
   CLI = 0
   LLM = 1
-  TERMINAL_UI = 2
+  PYGAME_AGENT = 2
 
 class Item_Type(Enum):
   ITEM = 0

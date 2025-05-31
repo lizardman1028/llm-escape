@@ -42,6 +42,8 @@ class GameEngine:
         self.api_key_bindings = {}
         self.awaiting_unlock_target = None
 
+        # self.thinking_num()
+
     def handle_event(self, event, agent : Agent):
         if not self.game_started and event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
@@ -60,10 +62,12 @@ class GameEngine:
                         result = execute_command(agent, cmd)
                         self.last_human_result = result if result else f"You performed `{cmd}`."
                         self.awaiting_unlock_target = None
+                        agent.shouldnt_break = False
                     else:
                         cmd = self.human_input_text
                         result = execute_command(agent, cmd)
                         self.last_human_result = result if result else f"You performed `{cmd}`."
+                        agent.shouldnt_break = False
                     self.human_input_text = ""
                     self.human_input_mode = False
                 elif event.key == pygame.K_BACKSPACE:
@@ -108,6 +112,7 @@ class GameEngine:
                         self.human_input_text = ""
                         self.human_input_mode = False
                         self.awaiting_unlock_target = None
+                        agent.shouldnt_break = False
                         return
                     elif event.key == pygame.K_BACKSPACE:
                         self.human_input_text = self.human_input_text[:-1]
@@ -124,11 +129,15 @@ class GameEngine:
                     cmd = self.api_key_bindings[key_char]
                     result = execute_command(agent, cmd)
                     self.last_human_result = result if result else f"You performed `{cmd}`."
+                    agent.shouldnt_break = False
 
         elif event.type == pygame.KEYUP:
             self.key_pressed.discard(event.key)
 
     def update(self, agent: Agent):
+        is_pygame_agent = agent.agent_type == Agent_Type.PYGAME_AGENT
+        is_llm_agent = agent.agent_type == Agent_Type.LLM
+    
         self.human_action_displayed = False
         if not self.game_started or self.win_message or self.selected_player == "god":
             return
@@ -145,7 +154,7 @@ class GameEngine:
 
         # Check if agent in a room, if so, clamp position to within that room (agents should hopefully always be in rooms)
         room_item = agent.get_room()
-        print(f"room name: {room_item.name}")
+        # print(f"room name: {room_item.name}")
         if room_item.name == "":
             pass
         else:
@@ -189,8 +198,11 @@ class GameEngine:
                     self.api_key_bindings[str(action_index)] = f"{item.name}.unlock({item.unlock_type.name})"
                     self.unlock_bindings[str(action_index)] = item.name 
                     action_index += 1
+                # if item.examined and item.unlock_type != Unlock_Type.none and item.unlocked:
 
-        print(f"interactable objects {collision_names}")
+                #     execute_command(agent, f"{item.name}.unlock({item.unlock_combination})")
+
+        # print(f"interactable objects {collision_names}")
 
     # def player_item_collisions(self, agent: Agent) -> tuple[list[str], list[Item]]:
     #     collision_names = []
@@ -245,6 +257,77 @@ class GameEngine:
                     break
 
         return collision_names, collision_items
+
+    def old_draw_agent_view(self, agent: Agent):
+     if not self.game_started:
+            for i, line in enumerate(self.rules_text[:10]):
+                rule = self.font.render(line, True, (120, 120, 120))
+                self.screen.blit(rule, (10, 10 + i * 18))
+            button_x, button_y = SCREEN_WIDTH // 2 - 50, SCREEN_HEIGHT // 2 - 20
+            pygame.draw.rect(self.screen, (100, 100, 100), (button_x, button_y, 100, 40))
+            start_text = self.font.render("Start", True, (255, 255, 255))
+            self.screen.blit(start_text, (button_x + 20, button_y + 10))
+     else:
+        self.screen.fill(COLOR_BG)
+        for revealed_name in agent.revealed_items:
+            revealed_item = agent.world.items.get(revealed_name, None)
+            if revealed_item == None:
+                continue
+            revealed_item.pygame_object.draw(self.screen)
+        # Agent1 Draw
+        if agent.world.agent1.agent_type == Agent_Type.PYGAME_AGENT:
+            pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.world.agent1.x, agent.world.agent1.y), PLAYER_RADIUS)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent1.x - 7, agent.world.agent1.y - 5), 2)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent1.x + 7, agent.world.agent1.y - 5), 2)
+            pygame.draw.rect(self.screen, (0,0,0), pygame.Rect(agent.world.agent1.x - 5, agent.world.agent1.y + 5, 10, 1))
+        if agent.world.agent1.agent_type == Agent_Type.LLM:
+            pygame.draw.circle(self.screen, COLOR_LLM, (agent.world.agent1.x, agent.world.agent1.y), PLAYER_RADIUS)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent1.x - 7, agent.world.agent1.y - 5), 2)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent1.x + 7, agent.world.agent1.y - 5), 2)
+            pygame.draw.rect(self.screen, (0,0,0), pygame.Rect(agent.world.agent1.x - 5, agent.world.agent1.y + 5, 10, 1))
+            if agent.world.agent1.is_thinking:
+                thinking = self.font.render("Thinking...", True, (0,0,0))
+                self.screen.blit(thinking, (agent.world.agent1.x - 20, agent.world.agent1.y - (15+18)))
+        if agent.world.agent2.agent_type == Agent_Type.PYGAME_AGENT:
+            pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.world.agent2.x, agent.world.agent2.y), PLAYER_RADIUS)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent2.x - 7, agent.world.agent2.y - 5), 2)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent2.x + 7, agent.world.agent2.y - 5), 2)
+            pygame.draw.rect(self.screen, (0,0,0), pygame.Rect(agent.world.agent2.x - 5, agent.world.agent2.y + 5, 10, 1))
+        if agent.world.agent2.agent_type == Agent_Type.LLM:
+            pygame.draw.circle(self.screen, COLOR_LLM, (agent.world.agent2.x, agent.world.agent2.y), PLAYER_RADIUS)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent2.x - 7, agent.world.agent2.y - 5), 2)
+            pygame.draw.circle(self.screen, (0,0,0), (agent.world.agent2.x + 7, agent.world.agent2.y - 5), 2)
+            pygame.draw.rect(self.screen, (0,0,0), pygame.Rect(agent.world.agent2.x - 5, agent.world.agent2.y + 5, 10, 1))
+            if agent.world.agent2.is_thinking:
+                thinking = self.font.render("Thinking...", True, (0,0,0))
+                self.screen.blit(thinking, (agent.world.agent2.x - 20, agent.world.agent2.y - (15+18)))
+        # pygame.draw.circle(self.screen, COLOR_PLAYER, (agent.x, agent.y), PLAYER_RADIUS)
+
+        if self.interaction_items and not self.human_input_mode:
+            box_x, box_y = 20, SCREEN_HEIGHT - 150
+            pygame.draw.rect(self.screen, (50, 50, 50), (box_x, box_y, 300, 130))
+            pygame.draw.rect(self.screen, (180, 180, 180), (box_x, box_y, 300, 130), 2)
+            y_offset = 0
+            for key, action in self.api_key_bindings.items():
+                # print(f"Binding [{key}] → {action}")
+                text = self.font.render(f"[{key}] {action}", True, (255, 255, 255))
+                self.screen.blit(text, (box_x + 10, box_y + 10 + y_offset))
+                y_offset += 20
+
+        if self.last_llm_action:
+            info = self.font.render(self.last_llm_action[:80], True, (180, 180, 255))
+            self.screen.blit(info, (10, SCREEN_HEIGHT - 70))
+        if self.last_human_result:
+            hinfo = self.font.render(self.last_human_result[:80], True, (255, 255, 180))
+            self.screen.blit(hinfo, (10, SCREEN_HEIGHT - 50))
+        if self.human_input_mode:
+            pygame.draw.rect(self.screen, (60, 60, 60), (10, SCREEN_HEIGHT - 30, 600, 25))
+            self.input_font.render_to(self.screen, (15, SCREEN_HEIGHT - 28), self.human_input_text, (255, 255, 255))
+        if self.win_message:
+            win_text = self.font.render(self.win_message, True, (0, 255, 0))
+            self.screen.blit(win_text, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2))
+        return
+
 
     def draw_agent_view(self, agent: Agent):
         self.screen.fill(COLOR_BG)
