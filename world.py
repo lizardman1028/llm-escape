@@ -1,33 +1,56 @@
 import curses
-import pygame
-# from game.engine import GameEngine
 from curses import wrapper
-import time
-import ollama
+import pygame, time, ollama
 from pygame_object import PygameObject
 from our_enums import Unlock_Type, Agent_Type, Item_Type
 from config import SCREEN_WIDTH, SCREEN_HEIGHT
-# from world import World
 
 INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape room is specified through a series of Python Objects, and you can interact with the world in this way. To win you need to open the door.\
 Here are the objects in the room and their associated functions, the room will update as you interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
+
+INITIAL_PROMPT = (
+    "Hi {}! You and another player are trapped in adjoining rooms.\n"
+    "Objects in the room are exposed as *Python objects*; interact by calling "
+    "their methods.  **Respond with exactly one valid call wrapped in "
+    "markdown**, e.g.:\n"
+    "```python wheel.examine()```\n"
+    "- `examine()` reveals details and new objects.\n"
+    "- `set(value)` turns a wheel.\n"
+    "- `unlock(code)` tries the code on a lock.\n"
+    "Seven correct *zodiac → number* pairs unlock the interior door; the final "
+    "exit opens with a single phrase.\n"
+    "Coordinate with the other player using `share(\"your message\")`."
+)
+
+VALID_PAIRS = [
+    ("Pisces", "7"),
+    ("Libra", "1"),
+    ("Taurus", "3"),
+    ("Leo", "6"),
+    ("Aries", "9"),
+    ("Gemini", "12"),
+    ("Scorpio", "11"),
+]
 
 shared = []
 
 revealed_items = []
 
+def share(message):
+    shared.append(message)
+    return f"Turn ended. Message shared was: {message}"
+
 class Agent:
   name : str
   agent_type : Agent_Type
   revealed_items : list[str] = []
-  # world: World
   def __init__(self, name, revealed_items):
     self.name = name
     self.revealed_items = revealed_items
 
   def turn(self):
     raise NotImplementedError("Interface does not implement turn function")
-  
+
 class Item:
   name : str = ""
   examine_out : str = ""
@@ -41,6 +64,7 @@ class Item:
   unlocked : bool = False
   pygame_object : PygameObject = PygameObject((0,0,0),0,0,0,0)
   item_type: Item_Type = Item_Type.ITEM
+
   def __init__(self, name : str, examine_out : str, unlock_type : Unlock_Type = Unlock_Type.none, unlock_combination : str ="", examine_reveals : list[str] = [], pygame_object : PygameObject = PygameObject((0,0,0), 0,0,0,0), item_type: Item_Type = Item_Type.ITEM, unlock_reveals : list[str] = []):
     self.name = name
     self.examine_out = examine_out
@@ -75,30 +99,166 @@ class Item:
             for attempt in self.unlock_attempts:
               ret += f"  unlock({attempt}) = False\n"
     return ret
-  def examine(self, agent: Agent):
+
+  def examine(self, agent):
     self.examined = True
     for item_name in self.examine_reveals:
-        if item_name not in agent.revealed_items:
-            agent.revealed_items.append(item_name)
-    self.examined_by.append(agent.name)
+      if item_name not in agent.revealed_items:
+        agent.revealed_items.append(item_name)
+
+    if self.name not in agent.revealed_items:
+        agent.revealed_items.append(self.name)
+
+    output = self.examine_out() if callable(self.examine_out) else self.examine_out
+
+    if hasattr(self, "labels"):
+        label_info = f"{self.name} options: {', '.join(self.labels)}. Currently set to: {getattr(self,'current',None) or '(unset)'}."
+    else:
+        label_info = ""
+
+    result = f"{output} {label_info}".strip()
+
     if agent.agent_type == Agent_Type.LLM:
-        return f"{self.name}.examine() = {self.examine_out}"
-    return self.examine_out
+        return f"{self.name}.examine() = '{result}'"
+    return result
+
   def unlock(self, combination, agent: Agent):
-    # Accept both "1234" and 1234
     if isinstance(combination, str) and combination.startswith('"') and combination.endswith('"'):
         combination = combination[1:-1]
-    combo_str = str(combination).strip()
-    target_str = str(self.unlock_combination).strip()
+    combo_str = str(combination).strip().lower()
+    target_str = str(self.unlock_combination).strip().lower()
+
     if combo_str == target_str:
         self.unlocked = True
         for item_name in self.unlock_reveals:
-          if item_name not in agent.revealed_items:
-              agent.revealed_items.append(item_name)
-        # agent.revealed_items.extend(self.unlock_reveals)
+            if item_name not in agent.revealed_items:
+                agent.revealed_items.append(item_name)
         return True
+
     self.unlock_attempts.append(combo_str)
     return False
+
+class PairDoor(Item):
+    """
+    Door that unlocks after receiving all seven correct zodiac-number pairs
+    in *any order*.  Each pair is supplied via:  door_hidden.unlock("Aries 9")
+    """
+
+    def __init__(self, name, hint_text, valid_pairs, pygame_object):
+        super().__init__(
+            name=name,
+            examine_out=hint_text,
+            unlock_type=Unlock_Type.str,
+            unlock_combination="",          # dynamic
+            pygame_object=pygame_object,
+        )
+        self.valid_pairs = set(valid_pairs)
+        self.found_pairs = set()
+
+    def unlock(self, combination, agent):
+        """Accepts 'Libra 1' or '1 Libra' (commas/spaces OK).
+
+        Returns a status string:
+           • 'Pair accepted (n/7).'          – valid new pair
+           • 'Pair already used.'             – duplicate
+           • 'Incorrect pair.'                – not in list
+           • 'Door fully unlocked!'           – all 7 found
+        """
+        combo = str(combination).strip()
+        tokens = combo.replace(",", " ").split()
+        if len(tokens) != 2:
+            return "Incorrect pair."
+
+        # Normalise order/case
+        if tokens[0].isalpha():
+            zodiac, number = tokens[0].capitalize(), tokens[1]
+        else:
+            number, zodiac = tokens[0], tokens[1].capitalize()
+
+        pair = (zodiac, number)
+
+        if pair not in self.valid_pairs:
+            return "Incorrect pair."
+        if pair in self.found_pairs:
+            return "Pair already used."
+
+        # New valid pair
+        self.found_pairs.add(pair)
+        shared.append(f"✅ Pair {zodiac} & {number} accepted ({len(self.found_pairs)}/7).")
+
+        if self.found_pairs == self.valid_pairs:
+            self.unlocked = True
+            shared.append("🔓 The interior door swings open!")
+
+            # ⭐ Reveal BOTH rooms to each agent so movement logic recognises them
+            for a in (agent.world.agent1, agent.world.agent2):
+                for room_name in ("room_main", "room_hidden"):
+                    if room_name not in a.revealed_items:
+                        a.revealed_items.append(room_name)
+
+            # ★ FINAL-PAPER: drop the exit-code sheet into room_hidden
+            world   = agent.world
+            if "final_paper" not in world.items:
+                world.items["final_paper"] = Item(
+                    "final_paper",
+                    "A yellow sheet reads: Ophiuchus 13",
+                    pygame_object=PygameObject(
+                        (255, 255, 0),
+                        SCREEN_WIDTH // 2 + 80,   # somewhere inside hidden room
+                        SCREEN_HEIGHT // 2,
+                        60,
+                        25,
+                    ),
+                )
+                for a in (world.agent1, world.agent2):
+                    a.revealed_items.append("final_paper")
+                shared.append("📄 A yellow paper flutters down from a chute.")
+            return "Door fully unlocked!"
+
+        return f"Pair accepted ({len(self.found_pairs)}/7)."
+
+class Wheel(Item):
+    def __init__(self, name, examine_out="", labels=None, pygame_object=None):
+        super().__init__(name=name, examine_out=examine_out, pygame_object=pygame_object)
+        self.labels = labels or [str(i) for i in range(1, 13)]
+        self.current = None
+
+    def set(self, value, agent):
+        val = str(value).strip()
+        if val in self.labels:
+            if self.current != val:
+                self.current = val
+                print(f"{self.name} set to {self.current}")
+            return f"{self.name} set to {self.current}"
+        return f"{self.name} did not move. '{value}' not found."
+        # val = str(value).strip()
+        # if val in self.labels:
+        #     if self.current != val:
+        #         self.current = val
+        #         if agent.world:
+        #             agent.world.correct_sets += 1
+        #             print(f"✅ Wheel set correctly {agent.world.correct_sets} times!")
+        #             if agent.world.correct_sets >= 7:
+        #                 door = agent.world.items.get("door_hidden", None)
+        #                 if door:
+        #                     door.unlock_combination = None
+        #                     door.unlocked = True
+        #                     if door.name not in agent.revealed_items:
+        #                         agent.revealed_items.append(door.name)
+        #                     print("🚪 Hidden door has been unlocked!")
+        #         return f"{self.name} set to {self.current}"
+        #     else:
+        #         return f"{self.name} is already set to {val}"
+        # return f"{self.name} did not move. '{value}' not found."
+
+    def examine(self, agent):
+        self.examined = True
+        if self.name not in agent.revealed_items:
+            agent.revealed_items.append(self.name)
+
+        label_str = ", ".join(self.labels)
+        description = self.examine_out
+        return f"{self.name}.examine() = {description} Labels: {label_str}"
 
 class World:
   items : dict[str, Item]
@@ -106,6 +266,7 @@ class World:
   agent2 : Agent
   def __init__(self, items):
     self.items = items
+    self.correct_sets = 0
     pygame.init()
     self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Escape Room: Human and LLM")
@@ -126,11 +287,14 @@ class CLI_Agent(Agent):
     self.agent_type = Agent_Type.CLI
   
   def turn(self):
-    self.render_world()
-    print(f"{self.name}>", end="")
-    
-    user_action = input()
-    execute_command(self, user_action)
+    while True:
+        self.render_world()
+        print(f"{self.name}>", end="")
+        user_action = input().strip()
+        if user_action.lower() in ["end", "endturn", "done"]:
+            break
+        result = execute_command(self, user_action)
+        print(result)
    
 
   def render_world(self):
@@ -169,8 +333,10 @@ class LLM_Agent(Agent):
       prompt += self.last_action_res
     for rev_item_name in self.revealed_items:
       rev_item = self.world.items.get(rev_item_name, None)
-      if rev_item == None:
-        continue
+      if rev_item is None:
+          continue
+      # dynamically refresh the examine_out for things like wheels
+      rev_item.examine(self)
       prompt += rev_item.print_item()
     return prompt
   
@@ -320,6 +486,7 @@ class LLM_Agent(Agent):
 
 def share(agent : Agent, msg):
   shared.append(f"{agent.name}: {msg}")
+  agent.shouldnt_break = False
 
 def execute_command(agent, cmd):
   print(f"[exec] cmd = {cmd}")
@@ -357,10 +524,13 @@ def execute_command(agent, cmd):
 
   if post_dot.startswith(".examine("):
     result = cur_item.examine(agent)
-    if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
-      cur_item.examine(agent.world.agent1)
-    if agent.world.agent2.name != agent.name and agent.get_room().name == agent.world.agent2.get_room().name:
-      cur_item.examine(agent.world.agent2)
+    for other_agent in [agent.world.agent1, agent.world.agent2]:
+        if other_agent.name != agent.name and agent.get_room().name == other_agent.get_room().name:
+            cur_item.examine(other_agent)
+    # if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
+    #   cur_item.examine(agent.world.agent1)
+    # if agent.world.agent2.name != agent.name and agent.get_room().name == agent.world.agent2.get_room().name:
+    #   cur_item.examine(agent.world.agent2)
     # if agent.world.agent1.name != agent.name:
     #   cur_item.examine(agent.world.agent1)
     return result
@@ -373,16 +543,39 @@ def execute_command(agent, cmd):
     
 
     return cur_item.examine(agent)
+  # if post_dot.startswith(".unlock("):
+  #   cur_combo = post_dot[8:post_dot.find(')')]
+  #   print(f"[exec] trying unlock({cur_combo}) on {pre_dot}")
+  #   success = cur_item.unlock(cur_combo, agent=agent)
+  #   if success:
+  #     if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
+  #         cur_item.unlock(cur_combo, agent.world.agent1)
+  #     if agent.world.agent2.name != agent.name and agent.get_room().name == agent.world.agent2.get_room().name:
+  #         cur_item.unlock(cur_combo, agent.world.agent2)
+  #   return "Unlocked!" if success else "Incorrect combination"
   if post_dot.startswith(".unlock("):
-    cur_combo = post_dot[8:post_dot.find(')')]
-    print(f"[exec] trying unlock({cur_combo}) on {pre_dot}")
-    success = cur_item.unlock(cur_combo, agent=agent)
-    if success:
-      if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
-          cur_item.unlock(cur_combo, agent.world.agent1)
-      if agent.world.agent2.name != agent.name and agent.get_room().name == agent.world.agent2.get_room().name:
-          cur_item.unlock(cur_combo, agent.world.agent2)
-    return "Unlocked!" if success else "Incorrect combination"
+      cur_combo = post_dot[8:post_dot.find(')')]
+      result = cur_item.unlock(cur_combo, agent)
+      # Mirror the attempt for the co-located agent
+      for other_agent in (agent.world.agent1, agent.world.agent2):
+          if other_agent is not agent and agent.get_room().name == other_agent.get_room().name:
+              cur_item.unlock(cur_combo, other_agent)
+      if cur_item.name == "door_exit" and result is True:
+        agent.world.engine.win_message = "🎉  Congratulations – you escaped!"
+        shared.append(agent.world.engine.win_message)
+      return result
+
+  if post_dot.startswith(".set("):
+    val = post_dot[5:post_dot.find(')')].strip()
+    if hasattr(cur_item, 'set'):
+        result = cur_item.set(val, agent)
+        if agent.agent_type == Agent_Type.LLM:
+            return result
+        else:
+            agent.world.engine.last_human_result = result
+            return result
+    return "This object cannot be set."
+
   return "No valid API matched"
 
 
