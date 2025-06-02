@@ -204,7 +204,8 @@ class LLM_Agent(Agent):
     self.x = int(world.items[revealed_items[0]].pygame_object.center_x)
     self.y = int(world.items[revealed_items[0]].pygame_object.center_y)
     self.messages = []
-    #LLM Variations
+    
+    #Formatting Variations
     self.show_last_action = True
     self.header_for_new_state = True
     
@@ -215,24 +216,28 @@ class LLM_Agent(Agent):
     self.initial_prompt_multiplayer = True
 
     self.remember_only_valid = True
+    self.remember_only_correct = False
 
     self.api_funcs_only = False
   def llm_config(self, 
+                 api_funcs_only:bool,
                  show_last_action:bool, 
                  header_for_new_state:bool, 
+                 
+                 remember_only_valid:bool,
+                 remember_only_correct: bool,
+
                  remember_only_action:bool, 
-                 remember_only_post_think:bool, 
-                 initial_prompt_multiplayer:bool, 
-                 remember_only_valid:bool, 
-                 api_funcs_only:bool):
+                 remember_only_post_think:bool):
      self.show_last_action = show_last_action
      self.header_for_new_state = header_for_new_state
      self.remember_only_action = remember_only_action
      self.remember_only_post_think = remember_only_post_think
-     self.initial_prompt_multiplayer = initial_prompt_multiplayer
      self.remember_only_valid = remember_only_valid
      self.api_funcs_only = api_funcs_only
-
+     self.remember_only_correct = remember_only_correct
+     if remember_only_correct:
+        self.remember_only_valid = True
      
   def create_prompt(self):
     prompt = ""
@@ -329,9 +334,12 @@ class LLM_Agent(Agent):
     cmd = python_instr
 
     exe_res = execute_command(self, cmd)
-
+    
     if exe_res.find("ERR") != -1 and self.remember_only_valid:
        return
+    
+    if exe_res == "Incorrect combination" and self.remember_only_correct:
+        return
 
     if self.remember_only_action:
       self.messages.append({
