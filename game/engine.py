@@ -178,6 +178,15 @@ class GameEngine:
         #         print(f"Added {item.name} to revealed_items")
         # self.interaction_items
         self.interaction_items = collision_items
+        for item in collision_items:
+            if item.examined:
+                for rev_item in item.examine_reveals:
+                    if rev_item not in agent.revealed_items:
+                        agent.revealed_items.append(rev_item)
+            if item.unlocked:
+                for rev_item in item.unlock_reveals:
+                    if rev_item not in agent.revealed_items:
+                        agent.revealed_items.append(rev_item)
         self.api_key_bindings.clear()
         self.unlock_bindings = {} 
 

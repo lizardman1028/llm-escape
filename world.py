@@ -7,10 +7,15 @@ import ollama
 from pygame_object import PygameObject
 from our_enums import Unlock_Type, Agent_Type, Item_Type
 from config import SCREEN_WIDTH, SCREEN_HEIGHT
+from enum import Enum
 # from world import World
 
-INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape room is specified through a series of Python Objects, and you can interact with the world in this way. To win you need to open the door.\
+INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape room is specified through a series of Python Objects, and you can interact with the world in this way.\
 Here are the objects in the room and their associated functions, the room will update as you interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
+
+INITIAL_PROMPT_MULTI_PLAYER = "Hi! Your name is {}. You are in an escape room with another player {}! This escape room is specified through a series of Python Objects, and you can interact with the world in this way.\
+Here are the objects in the room and their associated functions, the room will update as you and your teamate interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
+
 
 shared = []
 
@@ -71,10 +76,29 @@ class Item:
           ret += f"  def unlock({self.unlock_combination}) = True\n"
         else:
           ret += f"  def unlock({self.unlock_type.name})\n"
-          if (len(self.unlock_attempts) > 0 and not self.unlocked):
-            for attempt in self.unlock_attempts:
+          for attempt in self.unlock_attempts:
+              print(attempt)
               ret += f"  unlock({attempt}) = False\n"
     return ret
+  def print_item_func_only(self):
+    ret = ""
+    # ret += f"{self.name}:\n"
+    ret += f"{self.name}.examine()"
+    if (self.examined):
+      ret += f" = '{self.examine_out}'"
+    ret += "\n"
+    if (self.examined):
+      if (self.unlock_type == Unlock_Type.none):
+        ret += ""
+      if (self.unlock_type == Unlock_Type.int or self.unlock_type == Unlock_Type.str):
+        if self.unlocked:
+          ret += f"{self.name}.unlock({self.unlock_combination}) = True\n"
+        else:
+          ret += f"{self.name}.unlock({self.unlock_type.name})\n"
+          for attempt in self.unlock_attempts:
+            ret += f"{self.name}.unlock({attempt}) = False\n" 
+    return ret
+
   def examine(self, agent: Agent):
     self.examined = True
     for item_name in self.examine_reveals:
@@ -82,6 +106,7 @@ class Item:
             agent.revealed_items.append(item_name)
     self.examined_by.append(agent.name)
     if agent.agent_type == Agent_Type.LLM:
+        agent.last_action_res = f"{self.name}.examine() = {self.examine_out}"
         return f"{self.name}.examine() = {self.examine_out}"
     return self.examine_out
   def unlock(self, combination, agent: Agent):
@@ -90,20 +115,27 @@ class Item:
         combination = combination[1:-1]
     combo_str = str(combination).strip()
     target_str = str(self.unlock_combination).strip()
+    self.unlock_attempts.append(combo_str)
     if combo_str == target_str:
         self.unlocked = True
         for item_name in self.unlock_reveals:
           if item_name not in agent.revealed_items:
               agent.revealed_items.append(item_name)
         # agent.revealed_items.extend(self.unlock_reveals)
+        if agent.agent_type == Agent_Type.LLM:
+          agent.last_action_res = f"{self.name}.unlock({combination}) = True"
         return True
-    self.unlock_attempts.append(combo_str)
+    
+    print(self.unlock_attempts)
+    if agent.agent_type == Agent_Type.LLM:
+      agent.last_action_res = f"{self.name}.unlock({combination}) = False"
     return False
 
 class World:
   items : dict[str, Item]
   agent1 : Agent
   agent2 : Agent
+  shared : list[str]
   def __init__(self, items):
     self.items = items
     pygame.init()
@@ -111,12 +143,25 @@ class World:
     pygame.display.set_caption("Escape Room: Human and LLM")
 
     self.clock = pygame.time.Clock()
+    self.shared = []
     # Python types are weird, set this manually during 
     # self.engine = GameEngine(self.screen) 
+  def share(self, agent, str):
+    str_to_share = f"{agent.name}: {str}"
+    self.shared.append(str_to_share)
   def start(self):
+    turns = 0
     while True:
         self.agent1.turn()
         self.agent2.turn()
+        turns += 1
+        print(f"TURN: {turns}")
+        if self.items["room3"].examined:
+           print("ROOM ESCAPED")
+           break
+        if turns > 15:
+           print("ROOM FAILED")
+           break
 
 class CLI_Agent(Agent):
   def __init__(self, name, revealed_items, world):
@@ -158,22 +203,77 @@ class LLM_Agent(Agent):
     self.is_thinking = False
     self.x = int(world.items[revealed_items[0]].pygame_object.center_x)
     self.y = int(world.items[revealed_items[0]].pygame_object.center_y)
+    self.messages = []
+    #LLM Variations
+    self.show_last_action = True
+    self.header_for_new_state = True
+    
+    # only_action overrides post_think
+    self.remember_only_action = False
+    self.remember_only_post_think = True
 
+    self.initial_prompt_multiplayer = True
+
+    self.remember_only_valid = True
+
+    self.api_funcs_only = False
+  def llm_config(self, 
+                 show_last_action:bool, 
+                 header_for_new_state:bool, 
+                 remember_only_action:bool, 
+                 remember_only_post_think:bool, 
+                 initial_prompt_multiplayer:bool, 
+                 remember_only_valid:bool, 
+                 api_funcs_only:bool):
+     self.show_last_action = show_last_action
+     self.header_for_new_state = header_for_new_state
+     self.remember_only_action = remember_only_action
+     self.remember_only_post_think = remember_only_post_think
+     self.initial_prompt_multiplayer = initial_prompt_multiplayer
+     self.remember_only_valid = remember_only_valid
+     self.api_funcs_only = api_funcs_only
+
+     
   def create_prompt(self):
     prompt = ""
     if self.initial_prompt:
-      prompt += INITIAL_PROMPT.format(self.name)
+      if self.initial_prompt_multiplayer:
+        if self.name == self.world.agent1.name:
+            prompt += INITIAL_PROMPT_MULTI_PLAYER.format(self.name, self.world.agent2.name)
+        elif self.name == self.world.agent2.name:
+            prompt += INITIAL_PROMPT_MULTI_PLAYER.format(self.name, self.world.agent1.name)
+      else:
+         prompt += INITIAL_PROMPT.format(self.name)
+
       #TODO: Uncomment self.initial_prompt = False
       self.initial_prompt = False
-    else:
-      prompt += self.last_action_res
+    else:  
+      if self.show_last_action:
+        prompt += self.last_action_res + "\n"
+    if self.header_for_new_state:
+      prompt += "Updated World State\n-------------------\n"
+
+
     for rev_item_name in self.revealed_items:
       rev_item = self.world.items.get(rev_item_name, None)
       if rev_item == None:
         continue
-      prompt += rev_item.print_item()
+      if self.api_funcs_only:
+        prompt += rev_item.print_item_func_only()
+      else:
+        prompt += rev_item.print_item()
+      if rev_item.examined:
+        for rev_rev_item in rev_item.examine_reveals:
+            if rev_rev_item not in self.revealed_items:
+                self.revealed_items.append(rev_rev_item)
+      if rev_item.unlocked:
+          for rev_rev_item in rev_item.unlock_reveals:
+              if rev_rev_item not in self.revealed_items:
+                  self.revealed_items.append(rev_rev_item)
     return prompt
   
+
+
   def render_prompt(self, prompt):
     print(prompt, end="")
   
@@ -192,30 +292,32 @@ class LLM_Agent(Agent):
     )
 
     response = ""
-    
+    post_think_response = ""
+
     self.render_prompt(prompt)
     done_thinking = False
     self.is_thinking = True
+    num_thinks = 0
+    num_tokens = 0
     print("Thinking", end="", flush=True)
     for chunk in stream:
       part = chunk['message']['content']
       response = response + part
+      num_tokens += 1
       if response.find("</think>") != -1:
         done_thinking = True
         self.is_thinking = False
       if done_thinking:
         print(part, end="")
+        post_think_response = post_think_response + part
       else:
         print(".", end="", flush=True)
+        num_thinks += 1
         self.world.engine.old_draw_agent_view(self)
         pygame.display.flip()
         # agent.world.clock.tick(60)
-    
-    self.messages.append({
-      'role': 'assistant',
-      'content': response,
-    })
-
+    print(f"num_tokens[{num_tokens}]{self.name}")
+    print(f"num_thinks[{num_thinks}]{self.name}")
     python_start = response.find("```python")
     python_start += 10
     python_end = response[python_start:].find("```")
@@ -225,9 +327,31 @@ class LLM_Agent(Agent):
     print(python_instr, end="")
 
     cmd = python_instr
-    
-    execute_command(self, cmd)
 
+    exe_res = execute_command(self, cmd)
+
+    if exe_res.find("ERR") != -1 and self.remember_only_valid:
+       return
+
+    if self.remember_only_action:
+      self.messages.append({
+      'role': 'assistant',
+      'content': cmd,
+      })
+    elif self.remember_only_post_think:
+      self.messages.append({
+      'role': 'assistant',
+      'content': post_think_response,
+      })
+    else:
+      self.messages.append({
+        'role': 'assistant',
+        'content': response,
+      })
+    
+    print(self.messages)
+ 
+    
   def get_room(self) -> Item:
         item_obj = None
         for item_name in self.revealed_items:
@@ -329,7 +453,7 @@ def execute_command(agent, cmd):
   close_ind = cmd.find(')')
   if dot_ind == -1 or open_ind == -1 or close_ind == -1:
     print("Function not found\n", end="")
-    return agent.turn()
+    return "ERR No function"
   pre_dot = cmd[:dot_ind]
   post_dot = cmd[dot_ind:]
   cur_item = agent.world.items.get(pre_dot, None)
@@ -337,9 +461,12 @@ def execute_command(agent, cmd):
   #   print("Item not found\n", end="")
   #   return agent.turn()
   if not isinstance(cur_item, Item): # this variation allows examine for nearby unrevealed items
-    return "Item not found"
+    return "ERR Item not found"
   
-  if agent.agent_type == Agent_Type.LLM:
+  if cur_item.name not in agent.revealed_items:
+     return "ERR Item not revealed"
+
+  if agent.agent_type == Agent_Type.LLM and cur_item.name in agent.revealed_items:
     desired_x = cur_item.pygame_object.center_x
     desired_y = cur_item.pygame_object.center_y
     x_displ = desired_x - agent.x
@@ -354,29 +481,32 @@ def execute_command(agent, cmd):
       agent.world.clock.tick(60)
 
 
-
   if post_dot.startswith(".examine("):
     result = cur_item.examine(agent)
+
+    # have other agents also get examine info if in same room as agent making examine call
     if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
       cur_item.examine(agent.world.agent1)
     if agent.world.agent2.name != agent.name and agent.get_room().name == agent.world.agent2.get_room().name:
       cur_item.examine(agent.world.agent2)
-    # if agent.world.agent1.name != agent.name:
-    #   cur_item.examine(agent.world.agent1)
+   
+    # if agent.agent_type == Agent_Type.LLM:
+    #   agent.last_action_res = result
     return result
   if pre_dot not in agent.revealed_items:
-    return "Item not revealed"
+    return "ERR Item not revealed"
   if post_dot.startswith(".examine("):
     # print(cur_item.name, end="")
     print(f"[exec] calling examine on {pre_dot}")
-
-    
 
     return cur_item.examine(agent)
   if post_dot.startswith(".unlock("):
     cur_combo = post_dot[8:post_dot.find(')')]
     print(f"[exec] trying unlock({cur_combo}) on {pre_dot}")
+    if cur_item.examined == False:
+       cur_item.examine(agent=agent)
     success = cur_item.unlock(cur_combo, agent=agent)
+    print(cur_item.unlock_attempts)
     if success:
       if agent.world.agent1.name != agent.name and agent.get_room().name == agent.world.agent1.get_room().name:
           cur_item.unlock(cur_combo, agent.world.agent1)
