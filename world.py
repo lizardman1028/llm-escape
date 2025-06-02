@@ -77,7 +77,7 @@ class Item:
         else:
           ret += f"  def unlock({self.unlock_type.name})\n"
           for attempt in self.unlock_attempts:
-              print(attempt)
+              # print(attempt)
               ret += f"  unlock({attempt}) = False\n"
     return ret
   def print_item_func_only(self):
@@ -126,7 +126,7 @@ class Item:
           agent.last_action_res = f"{self.name}.unlock({combination}) = True"
         return True
     
-    print(self.unlock_attempts)
+    # print(self.unlock_attempts)
     if agent.agent_type == Agent_Type.LLM:
       agent.last_action_res = f"{self.name}.unlock({combination}) = False"
     return False
