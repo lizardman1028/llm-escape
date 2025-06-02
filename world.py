@@ -9,17 +9,25 @@ INITIAL_PROMPT = "Hi! Your name is {}. You are in an escape room! This escape ro
 Here are the objects in the room and their associated functions, the room will update as you interact with it. For your response, you may ONLY respond with a single python function call present in the API.\n Your response is ONE line of python annotated with markdown ```python obj.examine() ```. You may not try multiple functions.\n"
 
 INITIAL_PROMPT = (
-    "Hi {}! You and another player are trapped in adjoining rooms.\n"
-    "Objects in the room are exposed as *Python objects*; interact by calling "
-    "their methods.  **Respond with exactly one valid call wrapped in "
-    "markdown**, e.g.:\n"
-    "```python wheel.examine()```\n"
+    "Hi {}! You and another player are trapped in adjoining rooms. Objects in the room are exposed as *Python objects*; "
+    "interact by calling their methods. Respond with exactly **one valid call** wrapped in markdown, e.g.:\n"
+    "```python\nwheel.examine()\n```\n"
     "- `examine()` reveals details and new objects.\n"
     "- `set(value)` turns a wheel.\n"
     "- `unlock(code)` tries the code on a lock.\n"
-    "Seven correct *zodiac → number* pairs unlock the interior door; the final "
-    "exit opens with a single phrase.\n"
-    "Coordinate with the other player using `share(\"your message\")`."
+    "- Use `share(\"your message\")` to communicate with the other player.\n"
+    "\n"
+    "**Goal:**\n"
+    "- Seven correct *zodiac → number* pairs unlock the interior door.\n"
+    "- The final exit opens with a single hidden phrase.\n"
+    "\n"
+    "**Rules:**\n"
+    "- Use the arrow or WASD keys to move.\n"
+    "- Press number keys to trigger API actions.\n"
+    "- [0] opens text chat via `share()`.\n"
+    "- Zodiac pairs that work: Pisces 7 · Libra 1 · Taurus 3 · Leo 6 · Aries 9 · Gemini 12 · Scorpio 11\n"
+    "- You may also input a pair directly, e.g. `door_hidden.unlock(\"Leo 6\")`\n"
+    "- LLM must only reply with one Python function call in markdown.\n"
 )
 
 VALID_PAIRS = [
