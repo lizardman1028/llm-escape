@@ -59,8 +59,8 @@ def main():
                          remember_only_valid=True,
                          remember_only_correct=False,
                          
-                         remember_only_action=True, 
-                         remember_only_post_think=False, 
+                         remember_only_action=False, 
+                         remember_only_post_think=True, 
                          )
     
     agent_llm2.llm_config(api_funcs_only=False,
@@ -70,8 +70,8 @@ def main():
                          remember_only_valid=True,
                          remember_only_correct=False,
                          
-                         remember_only_action=True, 
-                         remember_only_post_think=False, 
+                         remember_only_action=False, 
+                         remember_only_post_think=True, 
                          )
 
     world.engine.game_started = True

@@ -314,8 +314,8 @@ class GameEngine:
 
         if self.interaction_items and not self.human_input_mode:
             box_x, box_y = 20, SCREEN_HEIGHT - 150
-            pygame.draw.rect(self.screen, (50, 50, 50), (box_x, box_y, 300, 130))
-            pygame.draw.rect(self.screen, (180, 180, 180), (box_x, box_y, 300, 130), 2)
+            pygame.draw.rect(self.screen, (50, 50, 50), (box_x, box_y, 800, 130))
+            pygame.draw.rect(self.screen, (180, 180, 180), (box_x, box_y, 800, 130), 2)
             y_offset = 0
             for key, action in self.api_key_bindings.items():
                 # print(f"Binding [{key}] → {action}")
