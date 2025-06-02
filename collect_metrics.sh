@@ -1,13 +1,13 @@
 # UPDATE DIRECTORY TO VALUES MATCHING CONFIG
-mkdir ./TTTFTTF
+mkdir ./F_ROV_RPT
 
-python main.py > ./TTTFTTF/test1.txt
-python main.py > ./TTTFTTF/test2.txt
-python main.py > ./TTTFTTF/test3.txt
-python main.py > ./TTTFTTF/test4.txt
-python main.py > ./TTTFTTF/test5.txt
-python main.py > ./TTTFTTF/test6.txt
-python main.py > ./TTTFTTF/test7.txt
-python main.py > ./TTTFTTF/test8.txt
-python main.py > ./TTTFTTF/test9.txt
-python main.py > ./TTTFTTF/test0.txt
+python main.py > ./F_ROV_RPT/test11.txt
+python main.py > ./F_ROV_RPT/test12.txt
+python main.py > ./F_ROV_RPT/test13.txt
+python main.py > ./F_ROV_RPT/test14.txt
+python main.py > ./F_ROV_RPT/test15.txt
+python main.py > ./F_ROV_RPT/test16.txt
+python main.py > ./F_ROV_RPT/test17.txt
+python main.py > ./F_ROV_RPT/test18.txt
+python main.py > ./F_ROV_RPT/test19.txt
+python main.py > ./F_ROV_RPT/test10.txt

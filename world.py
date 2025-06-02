@@ -144,6 +144,7 @@ class World:
 
     self.clock = pygame.time.Clock()
     self.shared = []
+    self.total_num_think = 0
     # Python types are weird, set this manually during 
     # self.engine = GameEngine(self.screen) 
   def share(self, agent, str):
@@ -152,16 +153,25 @@ class World:
   def start(self):
     turns = 0
     while True:
+        turns += 1
         self.agent1.turn()
+        print(f"TURN: {turns}")
+        if self.items["room3"].examined:
+           print("ROOM ESCAPED")
+           break
+        if turns > 31:
+           print("ROOM FAILED")
+           break
         self.agent2.turn()
         turns += 1
         print(f"TURN: {turns}")
         if self.items["room3"].examined:
            print("ROOM ESCAPED")
            break
-        if turns > 15:
+        if turns > 31:
            print("ROOM FAILED")
            break
+    print(f"tot_num_think[{self.total_num_think}]")
 
 class CLI_Agent(Agent):
   def __init__(self, name, revealed_items, world):
@@ -323,6 +333,7 @@ class LLM_Agent(Agent):
         # agent.world.clock.tick(60)
     print(f"num_tokens[{num_tokens}]{self.name}")
     print(f"num_thinks[{num_thinks}]{self.name}")
+    self.world.total_num_think += num_thinks
     python_start = response.find("```python")
     python_start += 10
     python_end = response[python_start:].find("```")
