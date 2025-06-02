@@ -32,12 +32,13 @@ def main():
         "paper2":Item("paper2", "The paper is ripped on its right side, on it are the numbers 14", pygame_object=pygame_paper2),
         "door2":Item("door2", "A locked door with a 4 digit lock", unlock_type=Unlock_Type.int, unlock_combination="1452", unlock_reveals=["room3"], pygame_object=pygame_door2),
         "room3":Item("room3", "You Escaped the Rooms! Congrats!", pygame_object=pygame_room3, item_type=Item_Type.ROOM)}
+    
     world = World(items=items)
     world.engine = GameEngine(world.screen)
     # agent_pygame = PygameAgent("Player1", ["room"], world)
     
-    agent_llm = LLM_Agent("LLM_player", ["room"], world=world)
-    agent_llm2 = LLM_Agent("LLM_player2", ["room"], world=world)
+    agent_llm = LLM_Agent("player1", ["room"], world=world)
+    agent_llm2 = LLM_Agent("player2", ["room"], world=world)
     # TTTFTTF
     
     # Prompt Formatting
@@ -56,11 +57,12 @@ def main():
                          header_for_new_state=True, 
 
                          remember_only_valid=True,
-                         remember_only_correct=False,
+                         remember_only_correct=True,
                          
                          remember_only_action=False, 
                          remember_only_post_think=True, 
                          )
+    
     agent_llm2.llm_config(api_funcs_only=False,
                          show_last_action=True, 
                          header_for_new_state=True, 

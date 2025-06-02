@@ -357,7 +357,7 @@ class LLM_Agent(Agent):
         'content': response,
       })
     
-    print(self.messages)
+    # print(self.messages)
  
     
   def get_room(self) -> Item:
